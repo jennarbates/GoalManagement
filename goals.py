@@ -590,7 +590,40 @@ def cmd_seed(args, data):
     print("Demo data generated. Run: python tracker.py show demo")
 
 def main():
-    parser = argparse.ArgumentParser(description="CLI Goal Tracker with Heatmap")
+    epilog_text = f"""
+{Colors.HEADER}{Colors.BOLD}=== GAMIFICATION & SYSTEMS ==={Colors.RESET}
+
+{Colors.BOLD}1. RPG STATS SYSTEM (Solo Leveling){Colors.RESET}
+   Assign attributes to your real-life goals to build your character.
+   Use {Colors.CYAN}-s{Colors.RESET} or {Colors.CYAN}--stat{Colors.RESET} when adding a goal.
+   
+   {Colors.BOLD}Valid Stats:{Colors.RESET}
+   - {Colors.STR}STR{Colors.RESET} (Strength): Physical power (Pushups, Weights)
+   - {Colors.AGI}AGI{Colors.RESET} (Agility): Speed and dexterity (Running, Yoga)
+   - {Colors.INT}INT{Colors.RESET} (Intelligence): Knowledge (Reading, Coding)
+   - {Colors.VIT}VIT{Colors.RESET} (Vitality): Health and stamina (Water, Sleep)
+   - {Colors.PER}PER{Colors.RESET} (Perception): Focus and awareness (Meditation)
+
+   {Colors.BOLD}Example:{Colors.RESET} 
+   python tracker.py add running -s AGI
+
+{Colors.BOLD}2. UNITS{Colors.RESET}
+   Track specific metrics instead of just "count".
+   Use {Colors.CYAN}-u{Colors.RESET} or {Colors.CYAN}--unit{Colors.RESET} to define the measurement.
+   
+   {Colors.BOLD}Example:{Colors.RESET}
+   python tracker.py add reading -u pages
+
+{Colors.BOLD}3. DAILY QUEST{Colors.RESET}
+   Log progress on {Colors.BOLD}4 unique goals{Colors.RESET} in a single day to complete
+   the "Preparation" Daily Quest for a massive XP bonus.
+"""
+
+    parser = argparse.ArgumentParser(
+        description="CLI Goal Tracker with Heatmap",
+        epilog=epilog_text,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     subparsers = parser.add_subparsers(dest="command")
 
     # Add
