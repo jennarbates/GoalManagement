@@ -1,0 +1,229 @@
+{
+  "timezone": "America/New_York",
+  "items": [
+    {
+      "id": "pcap-2026-05-12",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 1",
+      "due": "2026-05-12",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-12",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 1, Lesson 1",
+      "due": "2026-05-12",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-12",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "Vector operations visualizer",
+      "due": "2026-05-12",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-12",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: ni3 - you",
+      "due": "2026-05-12",
+      "all_day": true
+    },
+    {
+      "id": "pcap-2026-05-13",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 2",
+      "due": "2026-05-13",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-13",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 1, Lesson 2",
+      "due": "2026-05-13",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-13",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "Matrix multiplication step-by-step",
+      "due": "2026-05-13",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-13",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: shi4 - to be",
+      "due": "2026-05-13",
+      "all_day": true
+    },
+    {
+      "id": "pcap-2026-05-14",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 3",
+      "due": "2026-05-14",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-14",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 1, Lesson 3",
+      "due": "2026-05-14",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-14",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "Gradient descent animator",
+      "due": "2026-05-14",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-14",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: hen3 - very",
+      "due": "2026-05-14",
+      "all_day": true
+    },
+    {
+      "id": "pcap-2026-05-15",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 4",
+      "due": "2026-05-15",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-15",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 2, Lesson 1",
+      "due": "2026-05-15",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-15",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "Eigenvalue explorer",
+      "due": "2026-05-15",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-15",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: you3 - to have",
+      "due": "2026-05-15",
+      "all_day": true
+    },
+    {
+      "id": "pcap-2026-05-16",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 5",
+      "due": "2026-05-16",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-16",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 2, Lesson 2",
+      "due": "2026-05-16",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-16",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "Linear regression from scratch",
+      "due": "2026-05-16",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-16",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: ge4 - general measure word",
+      "due": "2026-05-16",
+      "all_day": true
+    },
+    {
+      "id": "pcap-2026-05-17",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 6",
+      "due": "2026-05-17",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-17",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 2, Lesson 3",
+      "due": "2026-05-17",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-17",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "PCA from scratch",
+      "due": "2026-05-17",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-17",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: men - plural marker",
+      "due": "2026-05-17",
+      "all_day": true
+    },
+    {
+      "id": "pcap-2026-05-18",
+      "type": "assignment",
+      "course": "PCAP",
+      "title": "Modules & Packages, Lesson 7",
+      "due": "2026-05-18",
+      "all_day": true
+    },
+    {
+      "id": "math-ml-2026-05-18",
+      "type": "assignment",
+      "course": "Math for ML",
+      "title": "Linear Algebra, Week 3, Lesson 1",
+      "due": "2026-05-18",
+      "all_day": true
+    },
+    {
+      "id": "portfolio-2026-05-18",
+      "type": "project",
+      "course": "Portfolio",
+      "title": "Gaussian elimination solver",
+      "due": "2026-05-18",
+      "all_day": true
+    },
+    {
+      "id": "hsk-2026-05-18",
+      "type": "assignment",
+      "course": "HSK 1",
+      "title": "Practice: xue2 sheng - student",
+      "due": "2026-05-18",
+      "all_day": true
+    }
+  ]
+}

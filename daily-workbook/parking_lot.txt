@@ -1,0 +1,6 @@
+# Parking lot — backburner ideas, one per line.
+# The workbook picks 2 at random each day.
+# Lines starting with # are ignored.
+
+Minecraft mods
+Inventory of laserdiscs, cds, tapes, etc.
