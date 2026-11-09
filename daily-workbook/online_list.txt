@@ -1,0 +1,4 @@
+# Online list: things to do in your online time, one per line.
+# Write things here (or on the printout) instead of going online right away.
+# Delete a line once it's done. Lines starting with # are ignored.
+

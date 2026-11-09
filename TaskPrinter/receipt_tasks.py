@@ -16,6 +16,9 @@ Usage:
     python3 receipt_tasks.py print              # print to receipt printer
     python3 receipt_tasks.py print --preview    # print to terminal without printer
     python3 receipt_tasks.py remove 5           # delete a task
+    python3 receipt_tasks.py online             # show the online list
+    python3 receipt_tasks.py online add "renew library card"
+    python3 receipt_tasks.py online clear       # empty the list after your online time
 """
 
 import argparse
@@ -32,7 +35,7 @@ CONFIG_FILE  = Path.home() / ".receipt_printer.json"
 WORKBOOK_DIR = Path(__file__).resolve().parent.parent / "daily-workbook" / "workbooks"
 PAPER_WIDTH  = 48  # characters at default font on 80mm paper
 
-WORKBOOK_SOURCES = {"pcap", "math", "portfolio", "chore_weekly", "chore"}
+WORKBOOK_SOURCES = {"cs311", "leetcode", "pcap", "math", "portfolio", "chore_weekly", "chore"}
 
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
@@ -77,11 +80,10 @@ def save_config(cfg: dict) -> None:
 def _import_workbook():
     sys.path.insert(0, str(WORKBOOK_DIR))
     try:
-        from dailyWorkbookLocal import (
-            PCAP_CURRICULUM, MATH_ML_CURRICULUM,
-            MATH_PORTFOLIO_PROJECTS, CHORE_SCHEDULE,
-        )
-        return PCAP_CURRICULUM, MATH_ML_CURRICULUM, MATH_PORTFOLIO_PROJECTS, CHORE_SCHEDULE
+        from dailyWorkbookLocal import CHORE_SCHEDULE
+        import cs311  # daily-workbook/cs311.py, on the path via dailyWorkbookLocal
+        import leetcode
+        return CHORE_SCHEDULE, cs311, leetcode
     except ImportError as e:
         print(f"⚠  Could not import workbook: {e}")
         return None
@@ -90,31 +92,89 @@ def get_workbook_tasks() -> list:
     result = _import_workbook()
     if not result:
         return []
-    PCAP_CURRICULUM, MATH_ML_CURRICULUM, MATH_PORTFOLIO_PROJECTS, CHORE_SCHEDULE = result
+    CHORE_SCHEDULE, cs311, leetcode = result
 
-    cert_start = datetime(2026, 5, 12)
-    cert_day   = max(1, (datetime.now() - cert_start).days + 1)
-    idx        = (cert_day - 1)
-
-    pcap_section, pcap_desc, pcap_url = PCAP_CURRICULUM[idx % len(PCAP_CURRICULUM)]
-    math_section, math_desc, math_url = MATH_ML_CURRICULUM[idx % len(MATH_ML_CURRICULUM)]
-    portfolio_title, port_desc  = MATH_PORTFOLIO_PROJECTS[idx % len(MATH_PORTFOLIO_PROJECTS)]
-
+    algo = cs311.daily_set()
     weekday = datetime.now().weekday()
     weekly_task, _, weekly_time = CHORE_SCHEDULE[weekday]
 
-    return [
-        {"section": "CERT",  "text": pcap_section,    "note": pcap_desc,    "source": "pcap"},
-        {"section": "CERT",  "text": math_section,    "note": math_desc,    "source": "math"},
-        {"section": "CERT",  "text": portfolio_title, "note": port_desc,    "source": "portfolio"},
+    tasks = [
+        {"section": "CERT",  "text": f"CS311: {algo['topic']}",
+         "note": "Read 3 worked problems, do 3 on your own", "source": "cs311"},
+    ]
+    lc = leetcode.daily_set(mark=False)  # the workbook records progress, not the receipt
+    if lc["problem"]:
+        p = lc["problem"]
+        tasks.append({"section": "CERT", "text": f"LeetCode #{p['lc']}: {p['title']}",
+                      "note": f"{lc['level']} · {p['pattern']} · {lc['minutes']} min, then submit online",
+                      "source": "leetcode"})
+    tasks += [
         {"section": "CHORE", "text": f"★ {weekly_task}", "note": weekly_time, "source": "chore_weekly"},
         {"section": "CHORE", "text": "Clear one visible surface",  "note": "5 min", "source": "chore"},
         {"section": "CHORE", "text": "Put away 10 stray items",    "note": "5 min", "source": "chore"},
         {"section": "CHORE", "text": "Reset dishes or sink area",  "note": "5 min", "source": "chore"},
     ]
+    return tasks
+
+
+# ── Offline plan (daily-workbook/offline_plan.py) ─────────────────────────────
+
+def _offline_plan():
+    sys.path.insert(0, str(WORKBOOK_DIR.parent))
+    try:
+        import offline_plan
+        return offline_plan
+    except ImportError as e:
+        print(f"⚠  Could not load offline plan: {e}")
+        return None
+
+
+def _offline_lines() -> list[tuple[str, bool]]:
+    """Receipt lines for the offline block, as (text, bold)."""
+    op = _offline_plan()
+    if op is None:
+        return []
+    s = op.today_summary()
+    lines: list[tuple[str, bool]] = [("", False), (" OFFLINE TODAY", True), ("-" * W, False)]
+    lines += [(l, True) for l in _wrap(s["headline"], " ", 1)]
+    lines.append(("", False))
+    lines.append((" Online list:", False))
+    for item in s["online_list"]:
+        lines += [(l, False) for l in _wrap(item, " [ ] ", 7)]
+    lines += [(" [ ] " + "_" * (W - 6), False) for _ in range(3)]
+    if s["exceptions"]:
+        lines.append(("", False))
+        lines += [(l, False) for l in _wrap(", ".join(s["exceptions"]), " OK online for: ", 2)]
+    lines.append(("", False))
+    lines.append((" [ ] Stayed offline outside my plan", False))
+    lines.append(("     Minutes online today: ______", False))
+    return lines
 
 
 # ── Commands ──────────────────────────────────────────────────────────────────
+
+def cmd_online(args):
+    op = _offline_plan()
+    if op is None:
+        return
+    action = args.action[0] if args.action else "list"
+    if action == "add" and len(args.action) > 1:
+        op.add_online_item(" ".join(args.action[1:]))
+        print(f"✓ Added to online list: {' '.join(args.action[1:])}")
+    elif action == "clear":
+        op.save_online_list([])
+        print("✓ Online list cleared")
+    elif action == "list":
+        s = op.today_summary()
+        print(f"\n── {s['headline']} ──")
+        for i, item in enumerate(s["online_list"], 1):
+            print(f"  {i:>2}.  {item}")
+        if not s["online_list"]:
+            print("  (empty)  Add with:  python3 receipt_tasks.py online add \"...\"")
+        print()
+    else:
+        print('Usage: online | online add "text" | online clear')
+
 
 def cmd_sync(args):
     data  = load_data()
@@ -203,7 +263,7 @@ def cmd_list(args):
     done_count = sum(1 for t in tasks if t["done"])
     print(f"\n── {today_key()} · {done_count}/{len(tasks)} done ──")
 
-    for section_key, label in [("CERT","CERT STUDY"), ("CHORE","CHORES"), ("CUSTOM","CUSTOM")]:
+    for section_key, label in [("CERT","STUDY"), ("CHORE","CHORES"), ("CUSTOM","CUSTOM")]:
         section_tasks = [t for t in tasks if t.get("section") == section_key]
         if not section_tasks:
             continue
@@ -254,7 +314,7 @@ def _build_receipt(tasks: list) -> list[str]:
     lines.append(day_str.center(W))
     lines.append("=" * W)
 
-    for section_key, label in [("CERT","CERT STUDY"), ("CHORE","CHORES"), ("CUSTOM","CUSTOM")]:
+    for section_key, label in [("CERT","STUDY"), ("CHORE","CHORES"), ("CUSTOM","CUSTOM")]:
         section_tasks = [t for t in tasks if t.get("section") == section_key]
         if not section_tasks:
             continue
@@ -271,6 +331,8 @@ def _build_receipt(tasks: list) -> list[str]:
                 note_prefix = " " * indent
                 for l in _wrap(t["note"], note_prefix, indent):
                     lines.append(l)
+
+    lines += [text for text, _ in _offline_lines()]
 
     lines.append("")
     lines.append("=" * W)
@@ -340,7 +402,7 @@ def cmd_print(args):
         p.text(f"{day_str}\n")
         p.text("=" * W + "\n")
 
-        for section_key, label in [("CERT","CERT STUDY"), ("CHORE","CHORES"), ("CUSTOM","CUSTOM")]:
+        for section_key, label in [("CERT","STUDY"), ("CHORE","CHORES"), ("CUSTOM","CUSTOM")]:
             section_tasks = [t for t in tasks if t.get("section") == section_key]
             if not section_tasks:
                 continue
@@ -358,6 +420,11 @@ def cmd_print(args):
                 if t.get("note"):
                     for l in _wrap(t["note"], " " * indent, indent):
                         p.text(l + "\n")
+
+        for text, bold in _offline_lines():
+            p.set(bold=bold)
+            p.text(text + "\n")
+        p.set(bold=False)
 
         p.text("\n" + "=" * W + "\n")
         p.set(align="center")
@@ -465,6 +532,9 @@ def main():
     p_rm = sub.add_parser("remove", help="Delete a task")
     p_rm.add_argument("id", type=int, metavar="ID")
 
+    p_online = sub.add_parser("online", help="Show or edit the online list (things to do in your online time)")
+    p_online.add_argument("action", nargs="*", help='nothing to list, add "text", or clear')
+
     args = parser.parse_args()
 
     dispatch = {
@@ -476,6 +546,7 @@ def main():
         "remove": cmd_remove,
         "print":  cmd_print,
         "setup":  cmd_setup,
+        "online": cmd_online,
     }
 
     if args.command in dispatch:

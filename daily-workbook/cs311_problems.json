@@ -1,0 +1,582 @@
+{
+  "_about": "Worked practice problems for CMPSCI 311 (Kleinberg & Tardos). Original problems, written to match the course sections. Add more to any topic's list; the workbook picks a topic each day and prints 3 of its problems.",
+  "topics": [
+    {
+      "key": "stable-matching",
+      "name": "Stable Matching",
+      "chapter": "Ch. 1",
+      "lectures": "Lec 01",
+      "problems": [
+        {
+          "title": "Run Gale-Shapley by hand",
+          "problem": "Men m1, m2, m3 and women w1, w2, w3 have these preferences (best first). m1: w1 > w2 > w3. m2: w1 > w3 > w2. m3: w2 > w1 > w3. w1: m2 > m1 > m3. w2: m1 > m3 > m2. w3: m3 > m1 > m2. Run man-proposing Gale-Shapley (lowest-numbered free man proposes) and find the matching.",
+          "steps": [
+            "m1 proposes to w1. She is free, so (m1, w1).",
+            "m2 proposes to w1. She prefers m2 to m1, so (m2, w1) and m1 is free again.",
+            "m3 proposes to w2. She is free, so (m3, w2).",
+            "m1 proposes to his next choice, w2. She prefers m1 to m3, so (m1, w2) and m3 is free.",
+            "m3 proposes to w1. She prefers her current m2, so she rejects m3.",
+            "m3 proposes to w3. She is free, so (m3, w3). Everyone is matched.",
+            "Result: (m1, w2), (m2, w1), (m3, w3)."
+          ],
+          "why": "Check every possible blocking pair. m2 already has his first choice. m1 would rather have w1, but w1 prefers her partner m2. m3 would rather have w2 or w1, but w2 prefers m1 and w1 prefers m2. No pair would both rather be together, so the matching is stable."
+        },
+        {
+          "title": "Why Gale-Shapley stops",
+          "problem": "Show that Gale-Shapley ends after at most n^2 proposals when there are n men and n women.",
+          "steps": [
+            "Look at what changes in each round: one free man proposes to the highest woman on his list he hasn't proposed to yet.",
+            "A man never proposes to the same woman twice, because he moves down his list.",
+            "There are only n x n = n^2 (man, woman) pairs, so there can be at most n^2 proposals.",
+            "So the loop runs at most n^2 times and the algorithm terminates."
+          ],
+          "why": "This is the standard 'measure of progress' argument: find a quantity that strictly grows every step and has a cap. Here it is the set of proposals made so far, which grows by one each round and can never exceed n^2."
+        },
+        {
+          "title": "A woman's partners only improve",
+          "problem": "Show that in man-proposing Gale-Shapley, once a woman gets her first proposal she stays engaged until the end, and each new partner is someone she prefers to the last.",
+          "steps": [
+            "A woman only leaves an engagement when a man she prefers proposes. She then accepts him right away.",
+            "So she is never left without a partner after her first proposal.",
+            "She switches only when the new man ranks higher on her list, so her sequence of partners keeps getting better."
+          ],
+          "why": "This fact powers the proof that the final matching is perfect: if a man ended up free, he proposed to every woman, so every woman was engaged at some point and still is. With n men and n women, that is a contradiction."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Run man-proposing Gale-Shapley (lowest-numbered free man proposes). m1: w2 > w1 > w3. m2: w2 > w3 > w1. m3: w1 > w2 > w3. w1: m1 > m2 > m3. w2: m1 > m2 > m3. w3: m3 > m2 > m1.",
+          "answer": "m1 -> w2 (accepted). m2 -> w2 (rejected, she prefers m1). m2 -> w3 (accepted). m3 -> w1 (accepted). Matching: (m1, w2), (m2, w3), (m3, w1). Stable: m1 and m3 have their first choices, and m2's first choice w2 prefers m1."
+        },
+        {
+          "problem": "Show that when Gale-Shapley ends, every man is matched.",
+          "answer": "Suppose man m is free at the end. The loop only stops when no free man has someone left to propose to, so m proposed to all n women. Once proposed to, a woman stays engaged, so all n women are engaged at the end. They are engaged to n different men, none of them m, but there are only n - 1 other men. Contradiction."
+        },
+        {
+          "problem": "Show that in man-proposing Gale-Shapley, a man's sequence of partners only gets worse.",
+          "answer": "A man proposes down his list in order and never goes back up. He only changes partners after being dumped, and then proposes to the next woman on his list, who is lower than everyone he has already tried. So each partner is ranked below the previous one."
+        }
+      ]
+    },
+    {
+      "key": "analysis",
+      "name": "Algorithm Analysis",
+      "chapter": "Ch. 2",
+      "lectures": "Lec 02-04",
+      "problems": [
+        {
+          "title": "Order functions by growth rate",
+          "problem": "Sort from slowest-growing to fastest: n^2, n log n, 2^n, (log n)^10, n^1.01, 2^(log2 n).",
+          "steps": [
+            "Simplify first: 2^(log2 n) = n.",
+            "Any power of log n grows slower than any power of n, so (log n)^10 is smallest.",
+            "n < n log n, since log n grows without bound.",
+            "n log n < n^1.01, because n^0.01 eventually beats log n (any n^epsilon does).",
+            "n^1.01 < n^2 < 2^n, since polynomials lose to exponentials.",
+            "Order: (log n)^10, 2^(log2 n) = n, n log n, n^1.01, n^2, 2^n."
+          ],
+          "why": "Three rules settle almost every comparison: logs lose to polynomials, smaller powers lose to bigger powers, and polynomials lose to exponentials. Simplify expressions like 2^(log n) before comparing."
+        },
+        {
+          "title": "Prove a big-O bound",
+          "problem": "Prove that 3n^2 + 10n + 5 = O(n^2).",
+          "steps": [
+            "You need constants c > 0 and n0 so that 3n^2 + 10n + 5 <= c n^2 for all n >= n0.",
+            "For n >= 1, 10n <= 10n^2 and 5 <= 5n^2.",
+            "So 3n^2 + 10n + 5 <= 3n^2 + 10n^2 + 5n^2 = 18n^2.",
+            "Take c = 18 and n0 = 1."
+          ],
+          "why": "Big-O means 'at most a constant times, for large enough n'. The trick is to bound each lower-order term by the leading term once n >= 1, then add up the coefficients."
+        },
+        {
+          "title": "Running time of a doubling loop",
+          "problem": "What is the running time of: for i = 1 to n: { j = 1; while j < n: j = 2 * j }?",
+          "steps": [
+            "The inner loop doubles j each time: 1, 2, 4, ... until j >= n.",
+            "That takes about log2 n iterations.",
+            "The outer loop runs n times, and each run does the full inner loop.",
+            "Total: n x log2 n = Theta(n log n)."
+          ],
+          "why": "When a loop variable multiplies by a constant each step, the loop runs a logarithmic number of times. Nested loops multiply their counts when the inner loop doesn't depend on the outer one."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Sort from slowest to fastest: n^3, 3^n, n^2 log n, sqrt(n), log(n!), 2^n.",
+          "answer": "sqrt(n) < log(n!) < n^2 log n < n^3 < 2^n < 3^n. The key fact is log(n!) = Theta(n log n), from Stirling or from n! <= n^n and n! >= (n/2)^(n/2)."
+        },
+        {
+          "problem": "Prove 5n^3 + 2n + 7 = O(n^3).",
+          "answer": "For n >= 1: 2n <= 2n^3 and 7 <= 7n^3, so 5n^3 + 2n + 7 <= 14n^3. Take c = 14, n0 = 1."
+        },
+        {
+          "problem": "Running time of: for i = 1 to n: for j = i to n: (constant work)?",
+          "answer": "The inner loop runs n - i + 1 times. The total is n + (n-1) + ... + 1 = n(n+1)/2 = Theta(n^2)."
+        }
+      ]
+    },
+    {
+      "key": "graphs",
+      "name": "Graphs",
+      "chapter": "Ch. 3",
+      "lectures": "Lec 04-06",
+      "problems": [
+        {
+          "title": "Test whether a graph is bipartite",
+          "problem": "Use BFS to decide whether the 5-cycle 1-2-3-4-5-1 is bipartite.",
+          "steps": [
+            "Run BFS from node 1. Layer 0 = {1}.",
+            "Layer 1 = neighbors of 1 = {2, 5}.",
+            "Layer 2 = new neighbors of 2 and 5 = {3, 4}.",
+            "Color even layers red and odd layers blue.",
+            "Edge 3-4 joins two nodes in the same layer (layer 2), so both ends get the same color.",
+            "Not bipartite."
+          ],
+          "why": "In BFS every edge joins nodes in the same layer or adjacent layers. If no edge stays inside a layer, the even/odd coloring works. If one does, that edge plus the two BFS paths back to their common ancestor forms an odd cycle, and a graph with an odd cycle can't be 2-colored. It runs in O(m + n)."
+        },
+        {
+          "title": "Topological order of a DAG",
+          "problem": "Find a topological order for the DAG with edges a->b, a->c, b->d, c->d, d->e.",
+          "steps": [
+            "Find a node with no incoming edges: only a. Output a and delete it.",
+            "Now b and c have no incoming edges. Output b and delete it.",
+            "Output c and delete it. Now d has no incoming edges.",
+            "Output d, then e.",
+            "Order: a, b, c, d, e. (a, c, b, d, e also works.)"
+          ],
+          "why": "Every DAG has a node with no incoming edges, and deleting it leaves a DAG, so the process never gets stuck. Track each node's count of incoming edges and a list of nodes at zero, and the whole thing runs in O(m + n)."
+        },
+        {
+          "title": "Count connected components",
+          "problem": "Give an O(m + n) algorithm to count the connected components of an undirected graph.",
+          "steps": [
+            "Mark every node unvisited and set count = 0.",
+            "Go through the nodes in any order. When you reach an unvisited node v, add 1 to count and run BFS (or DFS) from v, marking everything it reaches.",
+            "When the loop ends, count is the number of components."
+          ],
+          "why": "Each BFS finds exactly one whole component, and a component is only started once because its nodes are marked afterwards. Every node and edge is handled a constant number of times across all the searches, so the total is O(m + n)."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Is the 6-cycle 1-2-3-4-5-6-1 plus the extra edge 1-4 bipartite? Use BFS from 1.",
+          "answer": "Layers: L0 = {1}, L1 = {2, 4, 6}, L2 = {3, 5}. Every edge goes between adjacent layers and none stays inside one, so yes. The sides are {1, 3, 5} and {2, 4, 6}."
+        },
+        {
+          "problem": "Find a topological order for edges x->y, z->y, y->w, z->w, w->v.",
+          "answer": "x and z start with no incoming edges. One order: x, z, y, w, v. (z, x, y, w, v also works.)"
+        },
+        {
+          "problem": "Give an O(m + n) algorithm that decides whether a directed graph has a path from s to t and outputs one if it does.",
+          "answer": "Run BFS from s, recording parent[v] when v is first reached. If t is never reached, there is no path. Otherwise follow parent pointers from t back to s and reverse the list. Each node and edge is handled once: O(m + n)."
+        }
+      ]
+    },
+    {
+      "key": "greedy",
+      "name": "Greedy Algorithms",
+      "chapter": "Ch. 4",
+      "lectures": "Lec 07-10",
+      "problems": [
+        {
+          "title": "Interval scheduling by earliest finish",
+          "problem": "Choose as many non-overlapping intervals as possible: A[1,4], B[3,5], C[0,6], D[5,7], E[3,9], F[5,9], G[6,10], H[8,11].",
+          "steps": [
+            "Sort by finish time: A(4), B(5), C(6), D(7), E(9), F(9), G(10), H(11).",
+            "Take A. Last finish = 4.",
+            "Skip B (starts 3), C (starts 0). Take D (starts 5 >= 4). Last finish = 7.",
+            "Skip E (3), F (5), G (6). Take H (starts 8 >= 7).",
+            "Answer: {A, D, H}, 3 intervals."
+          ],
+          "why": "Picking the interval that ends first leaves the most room for the rest. The 'greedy stays ahead' proof shows that after k picks, greedy's k-th interval ends no later than the k-th interval of any optimal solution, so greedy can always fit at least as many. Earliest start fails here: C starts first but blocks A, B and D."
+        },
+        {
+          "title": "Dijkstra by hand",
+          "problem": "Find shortest distances from s. Edges: s->a 4, s->b 1, b->a 2, a->t 1, b->t 5.",
+          "steps": [
+            "Start: d(s) = 0, everything else infinity.",
+            "Settle s. Update a = 4, b = 1.",
+            "Settle b (smallest, 1). Update a = min(4, 1 + 2) = 3, t = 1 + 5 = 6.",
+            "Settle a (3). Update t = min(6, 3 + 1) = 4.",
+            "Settle t (4).",
+            "Distances: s 0, b 1, a 3, t 4. Path to t: s -> b -> a -> t."
+          ],
+          "why": "When Dijkstra settles the closest unsettled node, no other route can beat it: any other path has to leave the settled set through some edge, and with non-negative weights that already costs at least as much. Negative edges break this argument, which is why Bellman-Ford exists."
+        },
+        {
+          "title": "Kruskal's minimum spanning tree",
+          "problem": "Find an MST. Edges: AB 1, BC 4, AC 3, CD 2, BD 5.",
+          "steps": [
+            "Sort edges by weight: AB 1, CD 2, AC 3, BC 4, BD 5.",
+            "Add AB (no cycle). Add CD (no cycle).",
+            "Add AC: it joins {A, B} with {C, D}, no cycle.",
+            "BC and BD would each make a cycle, so skip them.",
+            "MST = {AB, CD, AC}, total weight 6."
+          ],
+          "why": "Cut property: for any split of the nodes into two groups, the cheapest edge crossing between them is in every MST (with distinct weights). Each time Kruskal adds an edge, it is the cheapest edge leaving one of its current components, so every edge it adds is safe."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Choose as many non-overlapping intervals as possible: A[0,3], B[2,4], C[3,6], D[1,7], E[6,8], F[5,9], G[8,10].",
+          "answer": "By finish time: A(3), B(4), C(6), D(7), E(8), F(9), G(10). Take A, skip B, take C (3 >= 3), skip D, take E (6 >= 6), skip F, take G (8 >= 8). Answer: {A, C, E, G}, 4 intervals."
+        },
+        {
+          "problem": "Run Dijkstra from s. Edges: s->a 2, s->b 6, a->b 3, a->c 7, b->c 1, c->t 2, b->t 6.",
+          "answer": "Settle s (0), a (2), b (min(6, 2+3) = 5), c (min(9, 5+1) = 6), t (min(11, 6+2) = 8). Distances: a 2, b 5, c 6, t 8. Path to t: s -> a -> b -> c -> t."
+        },
+        {
+          "problem": "Find an MST with Kruskal. Edges: AB 2, AC 3, BC 1, BD 4, CD 5, DE 6, CE 7.",
+          "answer": "In sorted order: BC 1 (add), AB 2 (add), AC 3 (cycle, skip), BD 4 (add), CD 5 (cycle, skip), DE 6 (add), CE 7 (skip). MST = {BC, AB, BD, DE}, weight 13."
+        }
+      ]
+    },
+    {
+      "key": "divide-and-conquer",
+      "name": "Divide and Conquer",
+      "chapter": "Ch. 5",
+      "lectures": "Lec 11-13",
+      "problems": [
+        {
+          "title": "Solve the mergesort recurrence",
+          "problem": "Solve T(n) = 2T(n/2) + n, T(1) = 1.",
+          "steps": [
+            "Draw the recursion tree. Level 0: one problem of size n, work n.",
+            "Level 1: two problems of size n/2, work 2 x n/2 = n.",
+            "Level k: 2^k problems of size n/2^k, work n.",
+            "The size hits 1 after log2 n levels.",
+            "Total: n work per level x log2 n levels = Theta(n log n)."
+          ],
+          "why": "When every level of the tree does the same amount of work, the total is (work per level) x (number of levels). This is the balanced case: splitting into 2 halves exactly cancels the 2 subproblems."
+        },
+        {
+          "title": "Count inversions with merge-and-count",
+          "problem": "Count the inversions in [3, 1, 4, 2] (pairs i < j with a_i > a_j) using merge-and-count.",
+          "steps": [
+            "Split into [3, 1] and [4, 2].",
+            "[3, 1] has 1 inversion; sorted it is [1, 3]. [4, 2] has 1 inversion; sorted it is [2, 4].",
+            "Merge [1, 3] with [2, 4]. Take 1 (left).",
+            "Compare 3 and 2. Take 2 from the right. Every element still in the left list (just 3) is bigger than 2, so add 1.",
+            "Take 3, then 4. No more additions.",
+            "Total: 1 + 1 + 1 = 3. They are (3,1), (3,2), (4,2)."
+          ],
+          "why": "When you take an element from the right half, it is smaller than everything left in the left half, and all of those come before it in the original array. So you can count many inversions at once while merging, and the whole thing stays O(n log n)."
+        },
+        {
+          "title": "A recurrence where the leaves win",
+          "problem": "Solve T(n) = 3T(n/2) + n.",
+          "steps": [
+            "Level k of the recursion tree has 3^k problems of size n/2^k.",
+            "Work at level k: 3^k x n/2^k = n (3/2)^k.",
+            "That grows by a factor of 3/2 every level, so the bottom level dominates.",
+            "The bottom is at k = log2 n, where the work is about 3^(log2 n) = n^(log2 3).",
+            "T(n) = Theta(n^(log2 3)), about Theta(n^1.585)."
+          ],
+          "why": "Compare the branching factor (3) with how much the size shrinks (2). More subproblems than the shrink factor means the work grows going down the tree and the leaves dominate. This is the recurrence behind fast integer multiplication (3 half-size multiplications instead of 4)."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Solve T(n) = 2T(n/2) + 1, T(1) = 1.",
+          "answer": "Level k has 2^k problems doing constant work each, so 2^k work. Summing over log2 n levels: 1 + 2 + 4 + ... + n = 2n - 1. T(n) = Theta(n)."
+        },
+        {
+          "problem": "Count the inversions in [2, 4, 1, 3, 5] using merge-and-count.",
+          "answer": "3 inversions: (2,1), (4,1), (4,3). For example, split into [2, 4] (0) and [1, 3, 5] (0). Merging: take 1 from the right while 2 elements remain on the left (+2); take 2; take 3 from the right while 1 remains on the left (+1); take 4, then 5. Total 3."
+        },
+        {
+          "problem": "Solve T(n) = 4T(n/2) + n.",
+          "answer": "Level k: 4^k problems of size n/2^k, so n x 2^k work. That grows each level, so the leaves dominate: 4^(log2 n) = n^2. T(n) = Theta(n^2)."
+        }
+      ]
+    },
+    {
+      "key": "dynamic-programming",
+      "name": "Dynamic Programming",
+      "chapter": "Ch. 6",
+      "lectures": "Lec 14-17",
+      "problems": [
+        {
+          "title": "Weighted interval scheduling",
+          "problem": "Jobs (start, finish, value), sorted by finish: 1 (0, 3, 2), 2 (1, 5, 4), 3 (4, 6, 4), 4 (6, 8, 3), 5 (5, 9, 7). Find the most total value of compatible jobs.",
+          "steps": [
+            "p(j) = the last job that finishes by the time job j starts: p(1) = 0, p(2) = 0, p(3) = 1, p(4) = 3, p(5) = 2.",
+            "Recurrence: OPT(j) = max(v_j + OPT(p(j)), OPT(j - 1)), OPT(0) = 0.",
+            "OPT(1) = max(2 + 0, 0) = 2.",
+            "OPT(2) = max(4 + 0, 2) = 4.",
+            "OPT(3) = max(4 + OPT(1), 4) = 6.",
+            "OPT(4) = max(3 + OPT(3), 6) = 9.",
+            "OPT(5) = max(7 + OPT(2), 9) = 11.",
+            "Trace back: job 5 was taken (7 + OPT(2)), and OPT(2) took job 2. Answer: jobs 2 and 5, value 11."
+          ],
+          "why": "The optimal solution either uses job j or it doesn't. If it does, it can't use anything overlapping j, which leaves exactly jobs 1..p(j). If it doesn't, the answer is OPT(j - 1). Filling the table left to right takes O(n) after sorting."
+        },
+        {
+          "title": "0/1 knapsack",
+          "problem": "Capacity W = 5. Items (weight, value): A (2, 3), B (3, 4), C (4, 5), D (5, 6). Find the best total value.",
+          "steps": [
+            "Recurrence: OPT(i, w) = max(OPT(i - 1, w), v_i + OPT(i - 1, w - w_i)), where the second option is only allowed if w_i <= w.",
+            "With A only: OPT(A, w) = 3 for w >= 2.",
+            "Add B: OPT(B, 5) = max(3, 4 + OPT(A, 2)) = max(3, 7) = 7.",
+            "Add C: OPT(C, 5) = max(7, 5 + OPT(B, 1)) = max(7, 5) = 7.",
+            "Add D: OPT(D, 5) = max(7, 6 + OPT(C, 0)) = max(7, 6) = 7.",
+            "Answer: 7, using A and B (weight 5)."
+          ],
+          "why": "Greedy by value per weight fails in general, so you need a subproblem that remembers remaining capacity. The table is n x W, so the time is O(nW). That is pseudo-polynomial: it depends on the number W, not on how many bits it takes to write W."
+        },
+        {
+          "title": "Bellman-Ford with a negative edge",
+          "problem": "Edges: s->a 4, s->b 5, b->a -3, a->t 2. No negative cycles. Find the shortest s to t distance.",
+          "steps": [
+            "OPT(i, v) = shortest s to v distance using at most i edges.",
+            "i = 1: a = 4, b = 5, t = infinity.",
+            "i = 2: a = min(4, OPT(1, b) - 3) = 2. t = OPT(1, a) + 2 = 6.",
+            "i = 3: t = OPT(2, a) + 2 = 4. Nothing else changes.",
+            "Answer: 4, along s -> b -> a -> t. Dijkstra would wrongly settle a at 4 first."
+          ],
+          "why": "With no negative cycles, a shortest path never repeats a node, so it has at most n - 1 edges. Building answers for 'at most i edges' for i = 1 .. n - 1 therefore reaches the true distances, in O(mn) time."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Weighted interval scheduling, sorted by finish (start, finish, value): 1 (0, 2, 3), 2 (1, 4, 5), 3 (3, 5, 4), 4 (2, 6, 6), 5 (5, 7, 2).",
+          "answer": "p = [0, 0, 1, 1, 3]. OPT(1) = 3, OPT(2) = max(5, 3) = 5, OPT(3) = max(4 + 3, 5) = 7, OPT(4) = max(6 + 3, 7) = 9, OPT(5) = max(2 + 7, 9) = 9. Answer 9: jobs {1, 4}, or equally {1, 3, 5}."
+        },
+        {
+          "problem": "0/1 knapsack with W = 6. Items (weight, value): A (1, 1), B (2, 6), C (3, 10), D (5, 15).",
+          "answer": "Best is 17, using A + B + C (weight 6). Compare: B + C = 16, D + A = 16, D alone = 15."
+        },
+        {
+          "problem": "Bellman-Ford from s. Edges: s->a 3, s->b 4, b->a -2, a->c 2, b->c 4, c->t 1.",
+          "answer": "i=1: a 3, b 4. i=2: a 2, c 5. i=3: c 4, t 6. i=4: t 5. Shortest distance to t is 5, along s -> b -> a -> c -> t."
+        }
+      ]
+    },
+    {
+      "key": "network-flow",
+      "name": "Network Flow",
+      "chapter": "Ch. 7",
+      "lectures": "Lec 18-20",
+      "problems": [
+        {
+          "title": "Ford-Fulkerson by hand",
+          "problem": "Capacities: s->a 3, s->b 2, a->b 1, a->t 2, b->t 3. Find a max flow and a matching min cut.",
+          "steps": [
+            "Augment along s -> a -> t by 2 (a->t is full).",
+            "Augment along s -> b -> t by 2 (s->b is full).",
+            "Augment along s -> a -> b -> t by 1 (s->a and a->b are now full).",
+            "Flow value = 2 + 2 + 1 = 5.",
+            "In the residual graph, both edges out of s are full, so s reaches nothing. Cut A = {s}, capacity 3 + 2 = 5."
+          ],
+          "why": "When no augmenting path is left, the nodes s can still reach form a cut whose capacity equals the flow value. Since every flow is at most every cut's capacity, that flow is maximum and that cut is minimum (max-flow min-cut)."
+        },
+        {
+          "title": "Bipartite matching as flow",
+          "problem": "Students 1, 2, 3 and projects x, y, z. Allowed pairs: 1-x, 1-y, 2-x, 3-x. Find a maximum matching using flow.",
+          "steps": [
+            "Build a network: s -> each student (capacity 1), student -> project for each allowed pair (capacity 1), each project -> t (capacity 1).",
+            "Students 2 and 3 can only use x, and x can only take one student.",
+            "Send 1 unit along s -> 1 -> y -> t and 1 unit along s -> 2 -> x -> t.",
+            "Max flow = 2, so the max matching is {1-y, 2-x}.",
+            "Check: nodes {1, x} touch every allowed pair, so no matching can be bigger than 2."
+          ],
+          "why": "Capacity 1 into each student and out of each project means an integer flow uses each one at most once, so integer flows and matchings are the same thing. Ford-Fulkerson finds an integer max flow, which gives a maximum matching."
+        },
+        {
+          "title": "Why integer capacities give integer flows",
+          "problem": "Explain why Ford-Fulkerson, with integer capacities, stops and finds a max flow where every edge carries an integer amount.",
+          "steps": [
+            "Start with flow 0 on every edge, which is an integer.",
+            "Each augmenting path pushes its bottleneck: the smallest residual capacity along it. Residual capacities are differences of integers, so the bottleneck is a positive integer.",
+            "After each augmentation every edge still carries an integer amount, and the flow value grows by at least 1.",
+            "The flow value can't exceed C, the total capacity out of s, so there are at most C augmentations."
+          ],
+          "why": "This 'integrality theorem' is why flow reductions work for problems like matching. An answer with 1/2 of an edge would mean nothing, but you never get one: there is always an integer max flow and Ford-Fulkerson finds it."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Find a max flow and a min cut. Capacities: s->a 4, s->b 3, a->b 2, a->t 1, b->t 5.",
+          "answer": "Max flow 6: s->a->t 1, s->a->b->t 2, s->b->t 3. In the residual graph s can reach only a, so the cut A = {s, a} has capacity s->b 3 + a->b 2 + a->t 1 = 6."
+        },
+        {
+          "problem": "Workers 1, 2, 3 and jobs x, y, z. Allowed pairs: 1-x, 1-z, 2-x, 2-y, 3-y. Find a maximum matching with flow.",
+          "answer": "Use the same network as the worked problem. Max flow 3: matching {1-z, 2-x, 3-y}, so everyone gets a job."
+        },
+        {
+          "problem": "If every capacity in a network is doubled, what happens to the max flow and the min cut?",
+          "answer": "Every cut's capacity doubles, so the cheapest cut is still the same set of nodes, now with twice the capacity. By max-flow min-cut, the max flow value doubles too."
+        }
+      ]
+    },
+    {
+      "key": "intractability",
+      "name": "Intractability (NP)",
+      "chapter": "Ch. 8",
+      "lectures": "Lec 21-24",
+      "problems": [
+        {
+          "title": "Independent Set <=p Vertex Cover",
+          "problem": "Show that a graph G with n nodes has an independent set of size >= k if and only if it has a vertex cover of size <= n - k.",
+          "steps": [
+            "Claim: S is independent exactly when V - S is a vertex cover.",
+            "If S is independent, take any edge (u, v). Its ends can't both be in S, so at least one is in V - S. So V - S covers every edge.",
+            "If V - S is a vertex cover, take any u, v in S. If (u, v) were an edge, neither end would be in V - S, so it would be uncovered. So S has no edges inside it.",
+            "Sizes: |S| >= k exactly when |V - S| <= n - k.",
+            "Reduction: to answer 'independent set of size k?', ask Vertex Cover with the same G and n - k."
+          ],
+          "why": "A reduction shows Y is at least as hard as X: a fast solver for Y would also solve X. Here the transformation is just complementing the set, so these two problems are equally hard."
+        },
+        {
+          "title": "Showing 3-SAT is in NP",
+          "problem": "Explain why 3-SAT is in NP.",
+          "steps": [
+            "A problem is in NP if a 'yes' answer has a short certificate that can be checked in polynomial time.",
+            "Certificate: a true/false value for each variable. That takes n bits.",
+            "Checker: go through the k clauses and confirm each has at least one true literal. That is O(k) work.",
+            "So 3-SAT is in NP. Cook-Levin shows it is also NP-hard, so it is NP-complete."
+          ],
+          "why": "Being in NP only means answers are easy to check, not easy to find. To show a new problem is NP-complete, show it is in NP (a checker) and that a known NP-complete problem reduces to it."
+        },
+        {
+          "title": "Vertex Cover <=p Set Cover",
+          "problem": "Reduce Vertex Cover to Set Cover, and try it on the path a - b - c - d with k = 2.",
+          "steps": [
+            "Universe U = the set of edges.",
+            "For each vertex v, make the set S_v = the edges touching v.",
+            "Choosing k vertices that cover every edge is the same as choosing k sets whose union is U.",
+            "Example: U = {ab, bc, cd}. S_a = {ab}, S_b = {ab, bc}, S_c = {bc, cd}, S_d = {cd}.",
+            "S_b and S_c cover U, which matches the vertex cover {b, c} of size 2."
+          ],
+          "why": "The reduction is built in polynomial time and keeps yes/no answers the same in both directions. Since Vertex Cover is NP-complete and Set Cover is in NP, Set Cover is NP-complete too."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Show Clique <=p Independent Set.",
+          "answer": "Build the complement graph G' (u-v is an edge in G' exactly when it isn't in G). A set S is a clique in G exactly when it is independent in G'. So 'clique of size k in G?' becomes 'independent set of size k in G'?'. Building G' takes O(n^2)."
+        },
+        {
+          "problem": "Show Vertex Cover is in NP.",
+          "answer": "Certificate: a set S of nodes. Check that |S| <= k and that every edge has an end in S. That takes O(m + n), which is polynomial."
+        },
+        {
+          "problem": "On the path a - b - c - d - e, find a maximum independent set and the matching minimum vertex cover.",
+          "answer": "Max independent set {a, c, e}, size 3. Its complement {b, d} is a minimum vertex cover, size 2 = 5 - 3."
+        }
+      ]
+    },
+    {
+      "key": "approximation",
+      "name": "Approximation Algorithms",
+      "chapter": "Ch. 11",
+      "lectures": "Lec 25",
+      "problems": [
+        {
+          "title": "Greedy load balancing",
+          "problem": "Two machines, jobs in this order: 3, 3, 2, 2, 2. Give each job to the machine with the smallest current load. Compare with the best possible.",
+          "steps": [
+            "Job 3 -> M1 (3). Job 3 -> M2 (3).",
+            "Job 2 -> M1 (5). Job 2 -> M2 (5). Job 2 -> M1 (7).",
+            "Greedy makespan = 7.",
+            "Best: M1 = {3, 3} = 6, M2 = {2, 2, 2} = 6. Optimal makespan = 6.",
+            "Ratio 7/6, within the guaranteed factor of 2."
+          ],
+          "why": "Two lower bounds on the optimum T*: T* >= the biggest job, and T* >= the average load (total / m). When the last job j went onto the busiest machine, that machine was the least loaded, so its load was at most the average <= T*. Adding t_j <= T* gives greedy <= 2T*."
+        },
+        {
+          "title": "Center selection on a line",
+          "problem": "Points at 0, 1, 5, 6, 10. Choose k = 2 of them as centers to minimize the farthest any point is from its nearest center. Run the farthest-point greedy starting from 0.",
+          "steps": [
+            "Center 1: 0.",
+            "Farthest point from 0 is 10, so center 2: 10.",
+            "Distances to the nearest center: 0 -> 0, 1 -> 1, 5 -> 5, 6 -> 4, 10 -> 0. Greedy radius = 5.",
+            "Best choice: centers 1 and 6 give distances 1, 0, 1, 0, 4. Optimal radius = 4.",
+            "5 <= 2 x 4, as the guarantee promises."
+          ],
+          "why": "If greedy's radius were more than 2r* (r* = optimal radius), its k centers plus the farthest leftover point would be k + 1 points all more than 2r* apart. Each optimal center covers a radius-r* ball, which can't hold two points that far apart, so the optimal k centers couldn't cover them. Contradiction."
+        },
+        {
+          "title": "Why sorting jobs helps",
+          "problem": "Explain why giving out jobs largest-first (the sorted greedy) gives makespan at most 1.5 x optimal.",
+          "steps": [
+            "Sort jobs so t_1 >= t_2 >= ... >= t_n. With m machines and more than m jobs, consider t_(m+1).",
+            "Jobs 1 .. m+1 are each at least t_(m+1), and two of them must share a machine, so T* >= 2 t_(m+1).",
+            "The last job j added to the busiest machine has j >= m + 1, so t_j <= t_(m+1) <= T*/2.",
+            "As before, the load before adding j was at most T*. Total: at most T* + T*/2 = 1.5 T*."
+          ],
+          "why": "Same proof as before, but sorting gives a better bound on the last job: after the first m jobs, every remaining job is small compared to the optimum. A tighter analysis gets 4/3."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "Two machines, jobs in order 1, 1, 2, with ties going to M1. Run greedy load balancing and compare with optimal.",
+          "answer": "M1 gets 1, M2 gets 1, then the 2 goes to M1 (tie), so M1 = 3. Greedy makespan 3. Optimal: {1, 1} and {2}, makespan 2. Ratio 1.5, which equals 2 - 1/m, so the bound is tight here."
+        },
+        {
+          "problem": "Points 0, 2, 3, 9, 11, 12, with k = 2 and centers chosen from the points. Run the farthest-point greedy from 0, then find the optimum.",
+          "answer": "Greedy picks 0, then 12 (farthest). Distances: 2, 3, 3, 1, so greedy radius 3. Optimal centers 2 and 11 give radius 2. Radius 1 is impossible because no single point is within 1 of both 0 and 3. 3 <= 2 x 2."
+        },
+        {
+          "problem": "Run largest-first greedy on two machines with jobs 5, 4, 3, 3, 3.",
+          "answer": "5 -> M1, 4 -> M2, 3 -> M2 (7), 3 -> M1 (8), 3 -> M2 (10). Makespan 10. Optimal: {5, 4} and {3, 3, 3}, 9 each. Ratio 10/9 <= 1.5."
+        }
+      ]
+    },
+    {
+      "key": "randomized",
+      "name": "Randomized Algorithms",
+      "chapter": "Ch. 13",
+      "lectures": "Lec 26",
+      "problems": [
+        {
+          "title": "Contention resolution",
+          "problem": "n processes share one resource. Each round, every process tries to use it with probability 1/n, and an attempt succeeds only if nobody else tries. How likely is a given process to succeed in one round?",
+          "steps": [
+            "Process i succeeds when it tries (probability 1/n) and the other n - 1 don't (probability (1 - 1/n)^(n-1)).",
+            "Pr[success] = (1/n)(1 - 1/n)^(n-1).",
+            "(1 - 1/n)^(n-1) is at least 1/e, so Pr[success] >= 1/(en).",
+            "Over t = en rounds, Pr[never succeeds] <= (1 - 1/(en))^(en) <= 1/e. With t = en x c ln n rounds it drops to n^(-c)."
+          ],
+          "why": "Choosing p = 1/n balances 'try often enough' with 'don't collide'. Two limits do most of the work in this chapter: (1 - 1/n)^n heads to 1/e, and repeating a small success chance about 1/p times makes success likely."
+        },
+        {
+          "title": "Karger's min cut success probability",
+          "problem": "Karger's algorithm repeatedly contracts a uniformly random edge until 2 nodes are left. Show it finds a given min cut with probability at least 2/(n(n-1)).",
+          "steps": [
+            "Let the min cut have k edges. Every node has degree >= k (or that node alone would be a smaller cut), so m >= kn/2.",
+            "First contraction: Pr[it hits a cut edge] = k/m <= 2/n.",
+            "With j nodes left the same argument gives <= 2/j. So Pr[the cut survives] >= (1 - 2/n)(1 - 2/(n-1)) ... (1 - 2/3).",
+            "That is (n-2)/n x (n-3)/(n-1) x ... x 1/3, which telescopes to 2/(n(n-1))."
+          ],
+          "why": "One run rarely succeeds, but running it about n^2 ln n times and keeping the smallest cut found makes failure very unlikely, about 1/n. A side effect: a graph has at most n(n-1)/2 distinct min cuts."
+        },
+        {
+          "title": "Random assignment for MAX-3-SAT",
+          "problem": "A formula has k clauses, each with exactly 3 different variables. Set every variable true or false at random. What is the expected number of satisfied clauses?",
+          "steps": [
+            "A clause is false only if all 3 of its literals are false: probability (1/2)^3 = 1/8.",
+            "So each clause is satisfied with probability 7/8.",
+            "Let X = the number of satisfied clauses. By linearity of expectation, E[X] = 7k/8.",
+            "So some assignment satisfies at least 7k/8 clauses."
+          ],
+          "why": "Linearity of expectation works even when the events depend on each other, which is why it is so useful. A random variable is at least its average with positive probability, so an expected value can prove a good assignment exists."
+        }
+      ],
+      "practice": [
+        {
+          "problem": "With n = 4 processes each trying with probability 1/4, what is the exact chance a given process succeeds in one round? Compare it with 1/(en).",
+          "answer": "(1/4)(3/4)^3 = 27/256, about 0.105. The bound 1/(4e) is about 0.092, so the bound holds."
+        },
+        {
+          "problem": "For n = 5, what is Karger's lower bound on finding a given min cut in one run, and roughly how many runs push failure below 1/e?",
+          "answer": "2/(5 x 4) = 1/10. Ten independent runs fail with probability at most (1 - 1/10)^10, about 0.35, which is below 1/e (about 0.37)."
+        },
+        {
+          "problem": "Every clause has exactly 2 different variables. What is the expected fraction of clauses a random assignment satisfies?",
+          "answer": "A clause fails only if both literals are false: 1/4. So 3/4 of the clauses are satisfied in expectation, and some assignment satisfies at least 3k/4."
+        }
+      ]
+    }
+  ]
+}

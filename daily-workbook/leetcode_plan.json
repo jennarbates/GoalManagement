@@ -1,0 +1,5 @@
+{
+  "level": "easy",
+  "minutes": 25,
+  "review_after_days": [3, 7, 14, 30]
+}

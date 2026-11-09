@@ -4,7 +4,7 @@ Daily Workbook Generator — Whimsical Edition
 Base: stable local MLX + email version.
 Added: day-type awareness, dog care, morning routine, exercise, stretch/yoga,
        dinner suggestions, life admin, parking lot, full chore schedule,
-       cert study pages for PCAP + Math for ML + HSK 1.
+       CS311 algorithms practice + HSK 1 + offline plan.
 
 Day types:
   Mon/Wed/Fri = Work days  → lighter study blocks
@@ -42,6 +42,25 @@ import traceback
 from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
+
+# offline_plan.py lives one folder up, in daily-workbook/
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+try:
+    import offline_plan
+except ImportError:
+    offline_plan = None
+try:
+    import cs311
+except ImportError:
+    cs311 = None
+try:
+    import reading
+except ImportError:
+    reading = None
+try:
+    import leetcode
+except ImportError:
+    leetcode = None
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -985,160 +1004,84 @@ def generate_morning_page(ctx: dict) -> dict:
     }
 
 
-# Actual PCAP-31-03 exam curriculum in order
-_DOCS = "https://docs.python.org/3"
-
-PCAP_CURRICULUM = [
-    # Section 1: Modules & Packages
-    ("Modules & Packages, Lesson 1", "Import syntax: import, from … import, import … as, import *",  f"{_DOCS}/tutorial/modules.html"),
-    ("Modules & Packages, Lesson 2", "The __name__ variable and __main__ guard",                      f"{_DOCS}/tutorial/modules.html#executing-modules-as-scripts"),
-    ("Modules & Packages, Lesson 3", "sys.path and how Python finds modules",                         f"{_DOCS}/tutorial/modules.html#the-module-search-path"),
-    ("Modules & Packages, Lesson 4", "Standard library: math module",                                 f"{_DOCS}/library/math.html"),
-    ("Modules & Packages, Lesson 5", "Standard library: random module",                               f"{_DOCS}/library/random.html"),
-    ("Modules & Packages, Lesson 6", "Standard library: platform module",                             f"{_DOCS}/library/platform.html"),
-    ("Modules & Packages, Lesson 7", "Packages and __init__.py",                                      f"{_DOCS}/tutorial/modules.html#packages"),
-    ("Modules & Packages, Lesson 8", "Installing packages with pip",                                  "https://pip.pypa.io/en/stable/getting-started/"),
-    ("Modules & Packages, Lesson 9", "Python Package Index (PyPI)",                                   "https://pypi.org/"),
-    # Section 2: Exceptions
-    ("Exceptions, Lesson 1", "try / except basics",                                                   f"{_DOCS}/tutorial/errors.html"),
-    ("Exceptions, Lesson 2", "Multiple except clauses and catching by type",                          f"{_DOCS}/tutorial/errors.html#handling-exceptions"),
-    ("Exceptions, Lesson 3", "The exception hierarchy: BaseException and Exception",                  f"{_DOCS}/library/exceptions.html#exception-hierarchy"),
-    ("Exceptions, Lesson 4", "raise and raise … from",                                                f"{_DOCS}/tutorial/errors.html#raising-exceptions"),
-    ("Exceptions, Lesson 5", "Defining custom exception classes",                                     f"{_DOCS}/tutorial/errors.html#user-defined-exceptions"),
-    ("Exceptions, Lesson 6", "The assert statement",                                                  f"{_DOCS}/reference/simple_stmts.html#assert"),
-    ("Exceptions, Lesson 7", "The finally clause and else on try",                                    f"{_DOCS}/tutorial/errors.html#defining-clean-up-actions"),
-    # Section 3: Strings
-    ("Strings, Lesson 1", "String encoding, ASCII table, ord() and chr()",                            f"{_DOCS}/library/functions.html#ord"),
-    ("Strings, Lesson 2", "Case methods: upper, lower, title, capitalize, swapcase",                  f"{_DOCS}/library/stdtypes.html#string-methods"),
-    ("Strings, Lesson 3", "Search methods: find, rfind, index, rindex, startswith, endswith, count",  f"{_DOCS}/library/stdtypes.html#string-methods"),
-    ("Strings, Lesson 4", "Edit methods: replace, split, rsplit, join",                               f"{_DOCS}/library/stdtypes.html#string-methods"),
-    ("Strings, Lesson 5", "Padding methods: strip, lstrip, rstrip, center, ljust, rjust, zfill",      f"{_DOCS}/library/stdtypes.html#string-methods"),
-    ("Strings, Lesson 6", "String formatting: % operator",                                            f"{_DOCS}/library/stdtypes.html#printf-style-string-formatting"),
-    ("Strings, Lesson 7", "String formatting: .format() and f-strings",                               f"{_DOCS}/library/string.html#format-string-syntax"),
-    # Section 4: Object-Oriented Programming
-    ("OOP, Lesson 1",  "Classes and objects: class keyword, instantiation",                           f"{_DOCS}/tutorial/classes.html"),
-    ("OOP, Lesson 2",  "Instance variables and the __init__ method",                                  f"{_DOCS}/tutorial/classes.html#class-objects"),
-    ("OOP, Lesson 3",  "Class variables vs instance variables",                                       f"{_DOCS}/tutorial/classes.html#class-and-instance-variables"),
-    ("OOP, Lesson 4",  "Methods and self; __str__ and __repr__",                                      f"{_DOCS}/reference/datamodel.html#object.__repr__"),
-    ("OOP, Lesson 5",  "Properties: @property, setter, deleter",                                     f"{_DOCS}/library/functions.html#property"),
-    ("OOP, Lesson 6",  "Inheritance basics and method overriding",                                    f"{_DOCS}/tutorial/classes.html#inheritance"),
-    ("OOP, Lesson 7",  "super() and cooperative inheritance",                                         f"{_DOCS}/library/functions.html#super"),
-    ("OOP, Lesson 8",  "Multiple inheritance and MRO (Method Resolution Order)",                      f"{_DOCS}/tutorial/classes.html#multiple-inheritance"),
-    ("OOP, Lesson 9",  "isinstance() and issubclass()",                                               f"{_DOCS}/library/functions.html#isinstance"),
-    ("OOP, Lesson 10", "Magic methods: __eq__, __lt__, __gt__, __add__, __len__",                     f"{_DOCS}/reference/datamodel.html#special-method-names"),
-    ("OOP, Lesson 11", "Abstract classes and @abstractmethod",                                        f"{_DOCS}/library/abc.html"),
-    # Section 5: Miscellaneous
-    ("Miscellaneous, Lesson 1", "Generators and the yield statement",                                 f"{_DOCS}/howto/functional.html#generators"),
-    ("Miscellaneous, Lesson 2", "Iterators: __iter__ and __next__",                                   f"{_DOCS}/tutorial/classes.html#iterators"),
-    ("Miscellaneous, Lesson 3", "List comprehensions",                                                f"{_DOCS}/tutorial/datastructures.html#list-comprehensions"),
-    ("Miscellaneous, Lesson 4", "Dictionary and set comprehensions",                                  f"{_DOCS}/tutorial/datastructures.html#dictionaries"),
-    ("Miscellaneous, Lesson 5", "Lambda functions",                                                   f"{_DOCS}/howto/functional.html#small-functions-and-the-lambda-expression"),
-    ("Miscellaneous, Lesson 6", "Closures",                                                           f"{_DOCS}/faq/programming.html#why-do-lambdas-defined-in-a-loop-with-different-values-all-return-the-same-result"),
-    ("Miscellaneous, Lesson 7", "map(), filter(), sorted(), reversed()",                              f"{_DOCS}/library/functions.html"),
-    ("Miscellaneous, Lesson 8", "The os.path module",                                                 f"{_DOCS}/library/os.path.html"),
-    ("Miscellaneous, Lesson 9", "The datetime module",                                                f"{_DOCS}/library/datetime.html"),
-    ("Miscellaneous, Lesson 10", "Practice exam: full timed run-through",                             "https://pythoninstitute.org/pcap"),
-]
-
-# Actual Coursera Mathematics for Machine Learning curriculum in order
-_LA  = "https://www.coursera.org/learn/linear-algebra-machine-learning"
-_MVC = "https://www.coursera.org/learn/multivariate-calculus-machine-learning"
-_PCA = "https://www.coursera.org/learn/pca-machine-learning"
-
-MATH_ML_CURRICULUM = [
-    # Course 1: Linear Algebra (Imperial College London)
-    ("Linear Algebra, Week 1, Lesson 1", "Introduction to linear algebra and its role in machine learning", _LA),
-    ("Linear Algebra, Week 1, Lesson 2", "Vectors: what they are and basic operations",                     _LA),
-    ("Linear Algebra, Week 1, Lesson 3", "Vector addition and scalar multiplication",                       _LA),
-    ("Linear Algebra, Week 2, Lesson 1", "Modulus (magnitude) and inner product (dot product)",             _LA),
-    ("Linear Algebra, Week 2, Lesson 2", "Projections and changing basis",                                  _LA),
-    ("Linear Algebra, Week 2, Lesson 3", "Linear independence",                                             _LA),
-    ("Linear Algebra, Week 3, Lesson 1", "Matrix operations: addition and multiplication",                  _LA),
-    ("Linear Algebra, Week 3, Lesson 2", "Matrix transformations in 2D",                                    _LA),
-    ("Linear Algebra, Week 3, Lesson 3", "Gaussian elimination and solving linear systems",                 _LA),
-    ("Linear Algebra, Week 4, Lesson 1", "The inverse matrix",                                              _LA),
-    ("Linear Algebra, Week 4, Lesson 2", "Determinants",                                                    _LA),
-    ("Linear Algebra, Week 4, Lesson 3", "Eigenvalues and eigenvectors: intuition",                         _LA),
-    ("Linear Algebra, Week 4, Lesson 4", "Eigenvalues and eigenvectors: computation",                       _LA),
-    ("Linear Algebra, Week 4, Lesson 5", "Special matrices: identity, diagonal, symmetric",                 _LA),
-    # Course 2: Multivariate Calculus
-    ("Multivariate Calculus, Week 1, Lesson 1", "What is calculus? Limits and derivatives",                 _MVC),
-    ("Multivariate Calculus, Week 1, Lesson 2", "Differentiation rules: product rule, chain rule",          _MVC),
-    ("Multivariate Calculus, Week 1, Lesson 3", "Taylor series in one variable",                            _MVC),
-    ("Multivariate Calculus, Week 2, Lesson 1", "Multivariate functions and partial derivatives",           _MVC),
-    ("Multivariate Calculus, Week 2, Lesson 2", "The Jacobian matrix",                                      _MVC),
-    ("Multivariate Calculus, Week 2, Lesson 3", "The Hessian matrix",                                       _MVC),
-    ("Multivariate Calculus, Week 3, Lesson 1", "The multivariate chain rule",                              _MVC),
-    ("Multivariate Calculus, Week 3, Lesson 2", "Neural networks and backpropagation via the chain rule",   _MVC),
-    ("Multivariate Calculus, Week 4, Lesson 1", "Taylor series in multiple dimensions",                     _MVC),
-    ("Multivariate Calculus, Week 4, Lesson 2", "Linearisation and approximation",                          _MVC),
-    ("Multivariate Calculus, Week 5, Lesson 1", "Gradient descent: intuition and algorithm",                _MVC),
-    ("Multivariate Calculus, Week 5, Lesson 2", "Gradient descent in higher dimensions",                    _MVC),
-    ("Multivariate Calculus, Week 6, Lesson 1", "Regression: fitting a straight line",                      _MVC),
-    ("Multivariate Calculus, Week 6, Lesson 2", "Regression: non-linear and general models",                _MVC),
-    # Course 3: PCA
-    ("PCA, Week 1, Lesson 1", "Statistics of datasets: mean and variance",   _PCA),
-    ("PCA, Week 1, Lesson 2", "Covariance and correlation",                   _PCA),
-    ("PCA, Week 2, Lesson 1", "Inner products",                               _PCA),
-    ("PCA, Week 2, Lesson 2", "Inner product spaces and their properties",    _PCA),
-    ("PCA, Week 3, Lesson 1", "Orthogonal projections",                       _PCA),
-    ("PCA, Week 3, Lesson 2", "Orthonormal bases",                            _PCA),
-    ("PCA, Week 4, Lesson 1", "PCA: finding principal components",            _PCA),
-    ("PCA, Week 4, Lesson 2", "PCA: dimensionality reduction in practice",    _PCA),
-]
+def generate_algorithms_page(ctx: dict) -> dict:
+    """CS311: one random course topic, 3 worked problems + 3 to try (cs311.py)."""
+    if cs311 is None:
+        return {}
+    return cs311.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
 
 
-MATH_PORTFOLIO_PROJECTS = [
-    ("Vector operations visualizer", "Implement add, subtract, scalar multiply, dot product for 2D/3D vectors. Plot them with matplotlib arrows."),
-    ("Matrix multiplication step-by-step", "Write a function that shows each row×column step as it builds the result matrix. Print intermediate steps."),
-    ("Gradient descent animator", "Minimise f(x)=x²+2x+1 with gradient descent. Plot the loss curve and the path of x over iterations."),
-    ("Eigenvalue explorer", "For a 2x2 matrix, compute eigenvalues/eigenvectors and visualise how the matrix transforms unit vectors."),
-    ("Linear regression from scratch", "Implement least-squares regression using the normal equation (no sklearn). Plot data + fit line."),
-    ("PCA from scratch", "Compute the covariance matrix, eigen-decompose it, project 2D data onto 1 component. Visualise before/after."),
-    ("Gaussian elimination solver", "Implement row reduction with partial pivoting. Solve a 3x3 system and print each elimination step."),
-    ("Taylor series approximation", "Plot sin(x), e^x, and cos(x) alongside their Taylor approximations for N=1,3,5 terms."),
-    ("Monte Carlo pi estimator", "Use random point sampling to estimate π. Plot convergence as sample size grows."),
-    ("Numerical differentiation", "Implement forward, backward, and central difference methods. Compare accuracy against the true derivative."),
-    ("Gradient field visualiser", "Plot the gradient field ∇f for f(x,y)=x²+y² and f(x,y)=sin(x)cos(y) using quiver plots."),
-    ("Covariance & correlation explorer", "Generate correlated random datasets, compute the covariance matrix, and visualise as a heatmap."),
-    ("Backpropagation by hand", "Implement a tiny 1-hidden-layer network. Manually compute gradients and verify with finite differences."),
-    ("Markov chain simulator", "Build a weather Markov chain (sunny/rainy states). Simulate 100 steps and plot the state distribution."),
-    ("Fourier series visualiser", "Approximate a square wave using the first N Fourier terms. Animate as N increases from 1 to 20."),
-    ("Power method for eigenvalues", "Implement the power iteration algorithm. Show convergence to the dominant eigenvalue step by step."),
-    ("Numerical integration", "Implement Riemann sums, trapezoid rule, and Simpson's rule. Compare accuracy on ∫sin(x)dx from 0 to π."),
-    ("Logistic regression from scratch", "Implement sigmoid + cross-entropy + gradient descent. Fit on a 2-class dataset and plot the decision boundary."),
-    ("SVD image compression", "Apply SVD to a grayscale image. Reconstruct it with k=5, 20, 50 singular values. Show the quality tradeoff."),
-    ("Hessian & critical points", "For f(x,y)=x³-3xy+y³, compute the Hessian symbolically, find critical points, classify them, and plot the surface."),
-]
+def generate_leetcode_page(ctx: dict) -> dict:
+    """Today's LeetCode problem + re-solves due (leetcode.py)."""
+    if leetcode is None:
+        return {}
+    return leetcode.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
 
 
-def generate_cert_page(ctx: dict) -> dict:
-    dtype    = ctx["dtype"]
-    cert_day = ctx["cert_day"]
+def generate_reading_page(ctx: dict) -> dict:
+    """Today's saved Substack article (reading.py) + five writing prompts."""
+    if reading is None:
+        return {}
+    article = reading.article_for(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
+    if not article:
+        return {}
+    lenses = reading.PROMPT_LENSES
+    prompts = article.get("prompts")
+    if not prompts or len(prompts) != len(lenses):
+        lens_lines = "\n".join(f'{i}. {name}. Must begin with: "{stem}"'
+                               for i, (name, stem, _, _) in enumerate(lenses, 1))
+        prompt = (
+            "You write journaling prompts for someone reading an article on paper. "
+            "The prompts should build critical thinking and a deeper understanding of "
+            "the topic, not just ask for opinions.\n\n"
+            f"Article: {article['title']}" + (f" by {article['author']}" if article.get("author") else "") + "\n\n"
+            f"{reading.article_excerpt(article)}\n\n"
+            "Write exactly 5 writing prompts, one for each lens below, in the same order. "
+            "Each prompt must start with the exact words given, then name a specific "
+            "claim, example or idea from THIS article. Each is 1 or 2 sentences and "
+            "asks the reader to write, not just answer yes or no.\n"
+            "- Lens 1 asks for a plain restatement of the argument, not a new insight.\n"
+            "- Lens 2 names one unproven belief the article relies on.\n"
+            "- Lens 3 asks the reader to argue the opposite side.\n"
+            "- Lens 4 names a specific fact, study or history to look up.\n"
+            "- Lens 5 connects to the reader's own life.\n\n"
+            f"{lens_lines}\n\n"
+            "Reply with only the 5 prompts, numbered 1. to 5., one per line."
+        )
+        prompts = None
+        for attempt in (1, 2):
+            try:
+                print(f"⏳ reading_prompts (attempt {attempt})")
+                got = _parse_numbered_prompts(generate_text_local(prompt, max_tokens=600), len(lenses))
+            except Exception as e:
+                print(f"⚠ reading_prompts failed: {e}")
+                got = {}
+            if len(got) >= 4:
+                prompts = [got.get(i, lenses[i - 1][2]) for i in range(1, len(lenses) + 1)]
+                print("✓ reading_prompts")
+                reading.save_prompts(article, prompts)
+                break
+        if prompts is None:
+            print("⚠ Using the general writing prompts")
+            prompts = [fallback for _, _, fallback, _ in lenses]
+    return {**article, "prompts": [{"lens": name, "text": text, "follow": follow}
+                                   for (name, _, _, follow), text in zip(lenses, prompts)]}
 
-    context_label = {
-        "work":    "Study block",
-        "free":    "Deep study session",
-        "therapy": "Light review",
-        "weekend": "Weekend study",
-    }[dtype]
 
-    pcap_section,  pcap_desc,  pcap_url  = PCAP_CURRICULUM[  (cert_day - 1) % len(PCAP_CURRICULUM)]
-    math_section,  math_desc,  math_url  = MATH_ML_CURRICULUM[(cert_day - 1) % len(MATH_ML_CURRICULUM)]
-    portfolio_title, portfolio_desc = MATH_PORTFOLIO_PROJECTS[(cert_day - 1) % len(MATH_PORTFOLIO_PROJECTS)]
-
-    return {
-        "context_label":    context_label,
-        "pcap_section":     pcap_section,
-        "pcap_desc":        pcap_desc,
-        "pcap_url":         pcap_url,
-        "math_section":     math_section,
-        "math_desc":        math_desc,
-        "math_url":         math_url,
-        "portfolio_task":   portfolio_title,
-        "portfolio_note":   portfolio_desc,
-        "checkpoint_question": "What concept clicked for you today?",
-    }
+def _parse_numbered_prompts(text: str, count: int) -> dict[int, str]:
+    """Read '1. ...' lines from model output into {number: prompt}."""
+    import re
+    out: dict[int, str] = {}
+    for line in text.splitlines():
+        m = re.match(r"^\s*\(?(\d+)[.):]\s*(.+)$", line)
+        if not m:
+            continue
+        n, body = int(m.group(1)), m.group(2).strip().strip('"*')
+        # Drop a lens label the model may have echoed, e.g. "Assumptions: ..."
+        body = re.sub(r"^(In your own words|Assumptions|Push back|Go deeper|Connect)\s*[:\-–—]\s*", "", body, flags=re.I)
+        if 1 <= n <= count and len(body) > 20 and n not in out:
+            out[n] = body
+    return out
 
 
 def generate_chores_page(ctx: dict) -> dict:
@@ -1200,8 +1143,8 @@ def generate_admin_parking(ctx: dict) -> dict:
         "Schedule that appointment you've been putting off",
         "Check and sort physical mail pile",
         "Back up your study notes and progress files",
-        "Review your cert study schedule and adjust if needed",
-        "Look up one practice exam question or resource for PCAP or Math for ML",
+        "Review your study schedule and adjust if needed",
+        "Pick one CS311 lecture to rewatch or review during your online time",
     ]
 
     parking_items = _load_parking_lot()
@@ -1352,7 +1295,7 @@ def generate_creativity_page(ctx: dict) -> dict:
     fallback = {
         "title": "Sticker Soup Studio",
         "intro": "This page is for looseness, scribbles, and tiny visual ideas. No drawing has to be useful.",
-        "doodle_prompts": ["Draw today's mascot holding a pencil.", "Draw a cozy mug with a Chinese word on it.", "Invent a sticker for finishing chores.", "Sketch a tiny trophy for completing a cert module.", "Draw a border of stars, vines, or noodles.", "Make a tiny badge design for PCAP or HSK 1."],
+        "doodle_prompts": ["Draw today's mascot holding a pencil.", "Draw a cozy mug with a Chinese word on it.", "Invent a sticker for finishing chores.", "Sketch a tiny trophy for completing a cert module.", "Draw a border of stars, vines, or noodles.", "Make a tiny badge design for CS311 or HSK 1."],
         "affirmations": ["Small starts count.", "Messy progress is still progress.", "I can make one useful thing.", "Done can be cute."],
         "sticker_labels": ["started", "finished", "reviewed", "tidied", "studied", "learned", "rested", "sparkled"],
         "coloring_caption": "Color, scribble, decorate, or ignore the rules.",
@@ -1418,9 +1361,12 @@ def generate_workbook_content() -> dict:
 
     wb.update(generate_theme_and_cover(ctx))
     wb["_morning"]    = generate_morning_page(ctx)
-    wb["cert_page"]   = generate_cert_page(ctx)
+    wb["_algorithms"] = generate_algorithms_page(ctx)
+    wb["_leetcode"]   = generate_leetcode_page(ctx)
+    wb["_reading"]    = generate_reading_page(ctx)
     wb["chores_page"] = generate_chores_page(ctx)
     wb["_admin_parking"] = generate_admin_parking(ctx)
+    wb["_offline"] = offline_plan.today_summary() if offline_plan else {}
     wb.update(build_chinese_pages(ctx))
     wb["_moon"]           = ctx["moon"]
     wb["_weather"]        = ctx["weather"]
@@ -1459,17 +1405,6 @@ def normalize(wb: dict) -> dict:
     wb["cover"].setdefault("sticker_caption", "Add a sticker or doodle here when the day begins.")
 
     # Certs
-    wb.setdefault("cert_page", {})
-    wb["cert_page"].setdefault("context_label", "Study session")
-    wb["cert_page"].setdefault("pcap_section", "Modules & Packages, Lesson 1")
-    wb["cert_page"].setdefault("pcap_desc", "Import syntax: import, from … import, import … as, import *")
-    wb["cert_page"].setdefault("pcap_url", f"{_DOCS}/tutorial/modules.html")
-    wb["cert_page"].setdefault("math_section", "Linear Algebra, Week 1, Lesson 1")
-    wb["cert_page"].setdefault("math_desc", "Introduction to linear algebra and its role in machine learning")
-    wb["cert_page"].setdefault("math_url", _LA)
-    wb["cert_page"].setdefault("portfolio_task", "Vector operations visualizer")
-    wb["cert_page"].setdefault("portfolio_note", "Implement add, subtract, dot product for 2D/3D vectors. Plot with matplotlib arrows.")
-    wb["cert_page"].setdefault("checkpoint_question", "What concept clicked for you today?")
 
     # Chores
     wb.setdefault("chores_page", {})
@@ -1539,7 +1474,7 @@ def normalize(wb: dict) -> dict:
     wb.setdefault("creativity_page",{})
     wb["creativity_page"].setdefault("title","Sticker Soup Studio")
     wb["creativity_page"].setdefault("intro","This page is for scribbles and tiny visual ideas.")
-    _dp_fallbacks = ["Draw today's mascot holding a pencil.", "Draw a cozy mug with a Chinese word on it.", "Invent a sticker for finishing chores.", "Sketch a tiny trophy for completing a cert module.", "Draw a border of stars, vines, or noodles.", "Make a tiny badge design for PCAP or HSK 1."]
+    _dp_fallbacks = ["Draw today's mascot holding a pencil.", "Draw a cozy mug with a Chinese word on it.", "Invent a sticker for finishing chores.", "Sketch a tiny trophy for completing a cert module.", "Draw a border of stars, vines, or noodles.", "Make a tiny badge design for CS311 or HSK 1."]
     wb["creativity_page"]["doodle_prompts"] = _filter_placeholders(normalize_list_of_strings(wb["creativity_page"].get("doodle_prompts",[])), _dp_fallbacks)
     while len(wb["creativity_page"]["doodle_prompts"]) < 6:
         wb["creativity_page"]["doodle_prompts"].append(_dp_fallbacks[len(wb["creativity_page"]["doodle_prompts"]) % len(_dp_fallbacks)])
@@ -1604,6 +1539,9 @@ STYLES = """
       #fffdf8;
   }
   .page:last-child { page-break-after:auto; break-after:auto; }
+  /* Pages that may run longer than one sheet (worked problems, articles). */
+  .page.flow { height:auto; min-height:11in; overflow:visible; }
+  .page.flow .frame { -webkit-box-decoration-break:clone; box-decoration-break:clone; }
 
   .frame {
     border:3px dashed #f0d9c7;
@@ -1720,6 +1658,34 @@ STYLES = """
   .dinner-card { border:2px dashed #F4C87A; border-radius:16px; background:#FFFBF0; padding:12px 14px; margin-bottom:10px; }
   .admin-card { border:2px dashed #90C0B0; border-radius:16px; background:#F0FFF8; padding:12px 14px; margin-bottom:10px; }
   .parking-card { border:2px dashed #C8C8C8; border-radius:16px; background:#F9F9F9; padding:12px 14px; margin-bottom:10px; }
+  .article-title { font-family:Georgia,'Times New Roman',serif; font-size:24px; font-weight:700; line-height:1.25; color:#2b2b2b; margin:4px 0 6px; }
+  .article-byline { font-family:Menlo,Monaco,monospace; font-size:10.5px; color:#8a7a6a; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:12px; }
+  .article-body { font-family:Georgia,'Times New Roman',serif; font-size:12.5px; line-height:1.6; color:#2f2f2f; }
+  .article-body p, .article-body li { margin:0 0 9px; display:block; }
+  .article-body h3 { font-size:15px; margin:14px 0 6px; color:#3a3a3a; }
+  .article-body blockquote { margin:8px 0 10px; padding:4px 12px; border-left:3px solid #e6d5c4; color:#555; font-style:italic; }
+  .prompt-card { padding:10px 14px; margin-bottom:9px; }
+  .lc-card { padding:10px 14px; margin-bottom:9px; }
+  .lc-statement { font-size:13px; font-weight:700; color:#3c3c3c; line-height:1.45; margin-bottom:6px; }
+  .lc-example { font-family:Menlo,Monaco,monospace; font-size:11px; line-height:1.5; background:#F6F8FB; border:1px solid #DCE4EE; border-radius:8px; padding:6px 9px; margin:5px 0; color:#333; }
+  .lc-why { font-family:inherit; color:#777; }
+  .lc-howto { font-size:12px; line-height:1.45; color:#4a4a4a; background:#FFFBF0; }
+  .lc-step { display:flex; gap:10px; margin-bottom:6px; }
+  .lc-letter { flex:0 0 26px; height:26px; border-radius:50%; background:#2F5277; color:white; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; margin-top:2px; }
+  .lc-step-body { flex:1; }
+  .lc-meta { font-size:11px; font-weight:600; color:#8a8a8a; }
+  .lc-review { margin-bottom:8px; }
+  .lc-hint { font-size:12.5px; line-height:1.45; padding:6px 0; border-bottom:1px dashed #DCE4EE; }
+  .lc-code { font-family:Menlo,Monaco,monospace; font-size:10.5px; line-height:1.45; background:#F6F8FB; border:1px solid #DCE4EE; border-radius:8px; padding:8px 10px; white-space:pre-wrap; margin:6px 0; color:#222; }
+  .prompt-text { font-size:13px; font-weight:700; color:#3c3c3c; line-height:1.45; margin:6px 0 2px; }
+  .prompt-follow { font-size:12px; font-style:italic; color:#6a6a6a; line-height:1.4; margin-bottom:2px; }
+  .algo-card { padding:10px 14px; margin-bottom:9px; }
+  .algo-problem { font-size:12.5px; font-weight:700; color:#3c3c3c; line-height:1.4; margin-bottom:4px; }
+  .algo-steps { margin:3px 0 6px 18px; padding:0; font-size:12px; line-height:1.38; color:#444; }
+  .algo-steps li { margin-bottom:1px; }
+  .algo-why { font-size:12px; line-height:1.4; color:#4a4a4a; background:#F7F4FF; border-left:3px solid #C8B6FF; padding:6px 10px; border-radius:6px; }
+  .offline-card { border:2px dashed #8FB8DE; border-radius:16px; background:#F2F8FF; padding:12px 14px; margin-bottom:10px; }
+  .offline-headline { font-size:18px; font-weight:800; color:#2F5277; margin-bottom:4px; }
   .evening-dog { border:2px dashed #C8A0E0; border-radius:16px; background:#F9F2FF; padding:12px 14px; margin-bottom:10px; }
 
   .moon-card { border:2px dashed #9B8EC4; border-radius:18px; background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%); padding:16px 18px; margin-bottom:12px; color:#e8e0f0; }
@@ -1799,6 +1765,7 @@ STYLES = """
       break-before: auto !important;
     }
     .page:last-child { page-break-after: auto !important; break-after: auto !important; }
+    .page.flow { height: auto !important; min-height: 10.5in !important; overflow: visible !important; }
 
     .frame { min-height: 9.86in !important; height: auto !important; max-height: none !important; overflow: visible !important; display: flex !important; flex-direction: column !important; }
 
@@ -1808,7 +1775,7 @@ STYLES = """
     .cycle-card, .cycle-block, .cycle-alert, .cycle-emotional,
     .dog-block, .morning-checklist, .one-thing-box, .brain-dump-box,
     .stretch-card, .exercise-card, .dinner-card,
-    .admin-card, .parking-card, .evening-dog,
+    .admin-card, .parking-card, .offline-card, .algo-card, .prompt-card, .lc-card, .evening-dog,
     .vocab-card, .check-card, .dialogue-card, .gloss-card,
     .doodle-cloud, .sticker-slot {
       page-break-inside: avoid !important;
@@ -1837,7 +1804,7 @@ STYLES = """
 def build_html(wb: dict) -> str:
     theme      = wb["theme"]
     cover      = wb["cover"]
-    cert       = wb["cert_page"]
+    algo       = wb.get("_algorithms") or {}
     chores     = wb["chores_page"]
     chinese_lesson = wb["chinese_lesson_page"]
     chinese_ref    = wb["chinese_reference_page"]
@@ -2008,37 +1975,103 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
-    # ── PAGE 2: Cert study ────────────────────────────────────────────────────
-    parts.append(f"""
-<div class="page"><div class="frame">
-  {section_title("cert study", cert.get("context_label","Study session"), "level up")}
+    # ── PAGE 2: CS311 worked problems + your turn ────────────────────────────
+    if algo:
+        algo_sub = f'{algo.get("chapter","")} · {algo.get("lectures","")} · Kleinberg & Tardos'
+        worked_html = ""
+        for n, prob in enumerate(algo.get("worked", []), 1):
+            steps = "".join(f"<li>{esc(st)}</li>" for st in prob.get("steps", []))
+            worked_html += f"""
+  <div class="card algo-card">
+    <div class="mini-title">Worked problem {n}: {esc(prob.get("title",""))}</div>
+    <div class="algo-problem">{esc(prob.get("problem",""))}</div>
+    <ol class="algo-steps">{steps}</ol>
+    <div class="algo-why"><b>Why it works.</b> {esc(prob.get("why",""))}</div>
+  </div>"""
+        practice_html = ""
+        for n, prob in enumerate(algo.get("practice", []), 1):
+            practice_html += f"""
+  <div class="card algo-card">
+    <div class="mini-title">Your turn {n}</div>
+    <div class="algo-problem">{esc(prob.get("problem",""))}</div>
+    <div style="margin-top:6px;">{blank_lines(4)}</div>
+  </div>"""
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("cs311 algorithms", algo.get("topic","Algorithms"), "worked examples")}
+  <div class="footer-note" style="margin-bottom:10px;">{esc(algo_sub)}. Read each one slowly, then cover the steps and redo it yourself.</div>
+  {worked_html}
+  <div style="flex:1"></div>
+</div></div>
+""")
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("cs311 algorithms", "Your Turn: " + algo.get("topic","Algorithms"), "no peeking")}
+  <div class="footer-note" style="margin-bottom:10px;">Same ideas as the worked problems. The answer key is on the last page.</div>
+  {practice_html}
+  <div style="flex:1"></div>
+</div></div>
+""")
 
-  <div class="card">
-    <div class="mini-title">🐍 PCAP — Python Programming</div>
-    {checkbox_item(cert.get("pcap_section",""), cert.get("pcap_desc",""), "#7EC8A0", "#F0FFF8")}
-    <a class="cert-link" href="{cert.get('pcap_url','')}">{cert.get('pcap_url','')}</a>
-    <div class="medium-blank" style="margin-top:8px;"><div class="mini-note">Notes / scratch space</div></div>
+    # ── LeetCode: worksheet (UMPIRE) ─────────────────────────────────────────
+    lc = wb.get("_leetcode") or {}
+    if lc:
+        lp = lc.get("problem")
+        reviews_html = ""
+        for r in lc.get("reviews", []):
+            reviews_html += (f'<div class="card lc-card"><div class="mini-title">🔁 Re-solve from memory: #{r["lc"]} {esc(r["title"])} '
+                             f'<span class="lc-meta">{esc(r["pattern"])} · from {r["days_ago"]} days ago</span></div>'
+                             f'<div class="footer-note">From memory: write the key idea, then the code. Check it on the LeetCode answer page.</div>'
+                             f'{blank_lines(5, "#C9D6E8", 22)}</div>')
+        if lp:
+            ex_html = "".join(
+                f'<div class="lc-example"><b>Input:</b> {esc(i)}<br><b>Output:</b> {esc(o)}'
+                + (f'<br><span class="lc-why">{esc(w)}</span>' if w else "") + "</div>"
+                for i, o, w in lp["examples"])
+            intro = (f'<div class="card lc-card lc-intro"><div class="mini-title">🧩 New pattern: {esc(lp["pattern"])}</div>'
+                     f'<div class="footer-note">{esc(lc.get("pattern_intro",""))}</div></div>') if lc.get("new_pattern") else ""
+            def step(letter, name, prompt, lines, height=24):
+                return (f'<div class="card lc-card"><div class="lc-step"><div class="lc-letter">{letter}</div><div class="lc-step-body">'
+                        f'<div class="mini-title">{name}</div><div class="footer-note">{prompt}</div>'
+                        f'{blank_lines(lines, "#C9D6E8", height)}</div></div></div>')
+            parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("leetcode", f'#{lp["lc"]} ' + lp["title"], f'{lc["level"]} · {lc["position"]} of {lc["total"]}')}
+  <div style="margin-bottom:8px;">{chip(lp["pattern"], "#EFF7FF", "#A8C4D8", "#2F5277")}{chip(f'{lc["minutes"]}-min timer', "#FFF8E7", "#F5D38B", "#7D5B21")}</div>
+  {intro}
+  <div class="card lc-card">
+    <div class="lc-statement">{esc(lp["statement"])}</div>
+    {ex_html}
+    <div class="footer-note" style="margin-top:6px;"><b>Constraints:</b> {esc(lp["constraints"])}</div>
   </div>
-
-  <div class="card">
-    <div class="mini-title">📐 Math for ML — Coursera</div>
-    {checkbox_item(cert.get("math_section",""), cert.get("math_desc",""), "#89B4E8", "#F0F6FF")}
-    <a class="cert-link" href="{cert.get('math_url','')}">{cert.get('math_url','')}</a>
-    <div class="medium-blank" style="margin-top:8px;"><div class="mini-note">Notes / scratch space</div></div>
+  <div class="card lc-card lc-howto">
+    <b>How to work it:</b> start a {lc["minutes"]}-minute timer and go through U-M-P-I-R-E on paper.
+    Stuck when the timer ends? Read <b>one</b> hint on the LeetCode answer page, then try 5 more minutes before the next.
+    Submit it online at leetcode.com/problems/{esc(lp["slug"])} during your online hour.
   </div>
-
-  <div class="card">
-    <div class="mini-title">🧮 Math Portfolio — computation work</div>
-    {checkbox_item(cert.get("portfolio_task","Build a portfolio piece"), cert.get("portfolio_note",""), "#C4A0D8", "#F9F0FF")}
-    <div class="medium-blank" style="margin-top:8px;"><div class="mini-note">Notebook / script name</div></div>
-  </div>
-
-  <div class="card">
-    <div class="mini-title">Checkpoint</div>
-    <div class="footer-note">{esc(cert.get("checkpoint_question","What concept clicked for you today?"))}</div>
-    <div style="margin-top:10px;">{blank_lines(3)}</div>
-  </div>
-
+  {step("U", "Understand", "Restate the problem in your own words. Write two edge cases (empty? one item? duplicates? negatives?).", 3)}
+    {step("M", "Match", "Which pattern fits, and what in the problem told you?", 2)}
+  <div style="flex:1"></div>
+</div></div>
+""")
+            parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("leetcode", f'#{lp["lc"]} ' + lp["title"], "write it out")}
+  {step("P", "Plan", "Write the steps in plain English or pseudocode before any real code.", 3, 22)}
+  {step("I", "Implement", "Write the code by hand, in Python.", 10, 22)}
+    {step("R", "Review", "Trace Example 1 through your code line by line. Did you get the expected output?", 2)}
+    {step("E", "Evaluate", "Time: ________ &nbsp; Space: ________ &nbsp; Could it be faster, or use less memory?", 1)}
+  {reviews_html}
+  <div style="flex:1"></div>
+</div></div>
+""")
+        else:
+            parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("leetcode", "Level complete", lc["level"])}
+  <div class="card lc-card"><div class="mini-title">🎉 You've finished all {lc["total"]} {esc(lc["level"])} problems.</div>
+    <div class="footer-note">Tell Claude you're ready to move up a level. Until then, keep re-solving from memory.</div></div>
+  {reviews_html}
   <div style="flex:1"></div>
 </div></div>
 """)
@@ -2094,7 +2127,121 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    # ── PAGE 5: Offline today ─────────────────────────────────────────────────
+    offline = wb.get("_offline") or {}
+    if offline:
+        if offline.get("is_online_day"):
+            sub = "Your batched list is below. Close the laptop when it's done."
+        elif offline.get("mode") == "weekly_day":
+            sub = "Write anything you need online on the list. It waits for your internet day."
+        else:
+            sub = "Outside that hour, write it on the list instead of looking it up."
+        online_items = "".join(checkbox_item(i, "", "#8FB8DE", "#F2F8FF") for i in offline.get("online_list", []))
+        toolkit_chips = "".join(chip(t, "#F2F8FF", "#8FB8DE", "#2F5277") for t in offline.get("toolkit", []))
+        exception_chips = "".join(chip(e, "#F9F9F9", "#C8C8C8", "#555") for e in offline.get("exceptions", []))
+        parts.append(f"""
+<div class="page"><div class="frame">
+  {section_title("offline", "Offline Today", "phone down")}
 
+  <div class="offline-card">
+    <div class="offline-headline">🔌 {esc(offline.get("headline", ""))}</div>
+    <div class="footer-note">{esc(sub)}</div>
+  </div>
+
+  <div class="offline-card">
+    <div class="mini-title">📝 Online list</div>
+    <div class="footer-note" style="color:#888;margin-bottom:8px;">Carried over from online_list.txt, plus room for what comes up today.</div>
+    {online_items}
+    {blank_lines(6, "#B9D3EC")}
+  </div>
+
+  <div class="split">
+    <div class="offline-card">
+      <div class="mini-title">🧰 Reach for these instead</div>
+      <div>{toolkit_chips}</div>
+    </div>
+    <div class="offline-card">
+      <div class="mini-title">✅ Okay to go online for</div>
+      <div>{exception_chips}</div>
+    </div>
+  </div>
+
+  <div class="offline-card">
+    <div class="mini-title">🌙 End-of-day check-in</div>
+    {checkbox_item("Stayed offline outside my plan", "Exceptions don't count against you", "#8FB8DE", "#F2F8FF")}
+    <div class="footer-note" style="margin:8px 0 4px;">Minutes online today: ________</div>
+    <div class="footer-note" style="margin:8px 0 4px;">When I wanted the internet, I did this instead:</div>
+    {blank_lines(2, "#B9D3EC")}
+  </div>
+  <div style="flex:1"></div>
+</div></div>
+""")
+
+
+
+    # ── Reading: today's saved Substack article + reflection ─────────────────
+    art = wb.get("_reading") or {}
+    if art:
+        byline_bits = []
+        for x in (art.get("author"), art.get("publication"), art.get("published")):
+            if x and x not in byline_bits:
+                byline_bits.append(x)
+        byline = " · ".join(byline_bits)
+        tag = {"h": "h3", "quote": "blockquote", "li": "li"}
+        body_html = ""
+        for blk in art.get("blocks", []):
+            t = tag.get(blk.get("type"), "p")
+            body_html += f'<{t} class="article-{t}">{"• " if t == "li" else ""}{esc(blk.get("text",""))}</{t}>'
+        paywall = ('<div class="footer-note" style="color:#a66;">This post is paywalled, so only the free preview downloaded.</div>'
+                   if art.get("paywalled") else "")
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("reading", "Today's Read", f'{art.get("words", 0)} words')}
+  <div class="article-title">{esc(art.get("title",""))}</div>
+  <div class="article-byline">{esc(byline)}</div>
+  {paywall}
+  <div class="card prompt-card">
+    <div class="mini-title">Before you read</div>
+    <div class="footer-note">From the title alone: what do you already think about this topic, and what do you expect the author to argue?</div>
+    {blank_lines(2)}
+    <div class="footer-note" style="margin-top:6px;">While you read, mark it up: <b>underline</b> the main claims, <b>?</b> where you doubt something, <b>!</b> where you're surprised.</div>
+  </div>
+  <div class="article-body">{body_html}</div>
+  <div style="flex:1"></div>
+</div></div>
+""")
+        lens_colors = {"In your own words": ("#EFF7FF", "#A8C4D8", "#2F5277"),
+                       "Assumptions": ("#FFF8E7", "#F5D38B", "#7D5B21"),
+                       "Push back": ("#FFF0F5", "#F2B5CF", "#7B4C62"),
+                       "Go deeper": ("#F7F4FF", "#C8B6FF", "#5D4D85"),
+                       "Connect": ("#EFFFF7", "#9DD9D2", "#2B665E")}
+        def prompt_card(n, pr, lines):
+            bg, border, fg = lens_colors.get(pr["lens"], ("#F9F9F9", "#C8C8C8", "#555"))
+            return (f'<div class="card prompt-card"><div>{chip(pr["lens"], bg, border, fg)}</div>'
+                    f'<div class="prompt-text">{n}. {esc(pr["text"])}</div>'
+                    f'<div class="prompt-follow">{esc(pr.get("follow",""))}</div>{blank_lines(lines)}</div>')
+        prs = art.get("prompts", [])
+        first = "".join(prompt_card(n, pr, 4) for n, pr in enumerate(prs[:3], 1))
+        second = "".join(prompt_card(n, pr, 6) for n, pr in enumerate(prs[3:], 4))
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("reading", "Write About It", "think it through")}
+  <div class="footer-note" style="margin-bottom:10px;">On: {esc(art.get("title",""))}. Write in full sentences. Quote the article where you can.</div>
+  {first}
+  <div style="flex:1"></div>
+</div></div>
+""")
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("reading", "Write About It", "keep going")}
+  {second}
+  <div class="card prompt-card">
+    <div class="mini-title">Questions to look up in your online time</div>
+    {blank_lines(3)}
+  </div>
+  <div style="flex:1"></div>
+</div></div>
+""")
 
     # ── Weather page ──────────────────────────────────────────────────────────
     wx_avail   = weather_data.get("available", False)
@@ -2656,6 +2803,58 @@ def build_html(wb: dict) -> str:
   <div class="card">
     <div class="mini-title">Final sticker zone</div>
     <div class="sticker-grid">{sticker_grid(["showed up","learned","made","rested","tidied","studied","wrote","sparkled"])}</div>
+  </div>
+  <div style="flex:1"></div>
+</div></div>
+""")
+
+    # ── LeetCode hints + solution (near the back, so it's not in view) ───────
+    if lc and (lc.get("problem") or lc.get("reviews")):
+        lp = lc.get("problem")
+        sol_html = ""
+        if lp:
+            hints = "".join(f'<div class="lc-hint"><b>Hint {n}.</b> {esc(h)}</div>' for n, h in enumerate(lp["hints"], 1))
+            approach = "".join(f"<li>{esc(a)}</li>" for a in lp["approach"])
+            sol_html = f"""
+  <div class="card lc-card">
+    <div class="mini-title">#{lp["lc"]} {esc(lp["title"])}: hints</div>
+    <div class="footer-note" style="margin-bottom:6px;">Cover this page and reveal one hint at a time. Try again after each one.</div>
+    {hints}
+  </div>
+  <div class="card lc-card">
+    <div class="mini-title">Solution</div>
+    <ol class="algo-steps">{approach}</ol>
+    <pre class="lc-code">{esc(lp["solution"])}</pre>
+    <div class="footer-note"><b>Time:</b> {esc(lp["time"])} &nbsp; <b>Space:</b> {esc(lp["space"])}</div>
+    <div class="algo-why" style="margin-top:6px;"><b>Pattern note.</b> {esc(lp["takeaway"])} Copy this into your own words in your pattern notebook.</div>
+  </div>"""
+        rev_html = "".join(
+            f'<div class="card lc-card"><div class="mini-title">Re-solve check: #{r["lc"]} {esc(r["title"])}</div>'
+            f'<pre class="lc-code">{esc(r["solution"])}</pre></div>' for r in lc.get("reviews", []))
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("answer key", "LeetCode: Hints & Solutions", "only when stuck")}
+  {sol_html}
+  {rev_html}
+  <div style="flex:1"></div>
+</div></div>
+""")
+
+    # ── Answer key (last page, so it's easy to fold back) ────────────────────
+    if algo and algo.get("practice"):
+        answers_html = "".join(
+            f'<div class="card algo-card"><div class="mini-title">Your turn {n}</div>'
+            f'<div class="algo-problem" style="color:#888;">{esc(pr.get("problem",""))}</div>'
+            f'<div class="algo-why"><b>Answer.</b> {esc(pr.get("answer",""))}</div></div>'
+            for n, pr in enumerate(algo["practice"], 1))
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("answer key", "CS311 Answers: " + algo.get("topic",""), "check yourself")}
+  {answers_html}
+  <div class="card">
+    <div class="mini-title">Checkpoint</div>
+    <div class="footer-note">What clicked today, what did you miss, and what do you want to ask about in lecture?</div>
+    <div style="margin-top:10px;">{blank_lines(3)}</div>
   </div>
   <div style="flex:1"></div>
 </div></div>

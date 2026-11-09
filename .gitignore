@@ -9,3 +9,7 @@ daily-workbook/workbooks/*.pdf
 *.bak-*
 __pycache__/
 *.pyc
+
+# Downloaded Substack articles (other people's writing) and reading history
+daily-workbook/reading/
+daily-workbook/reading_progress.json

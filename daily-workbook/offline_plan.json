@@ -1,0 +1,19 @@
+{
+  "mode": "daily_hour",
+  "online_window": {"start": "19:00", "end": "20:00"},
+  "internet_day": "saturday",
+  "daily_check_minutes": 10,
+  "exceptions": [
+    "Emergencies",
+    "Work that needs it",
+    "Bills and banking",
+    "Maps when I'm out"
+  ],
+  "offline_toolkit": [
+    "Local MLX model for quick questions",
+    "Today's printed Substack article",
+    "HSK flashcards + offline dictionary",
+    "Kleinberg & Tardos textbook",
+    "Downloaded music and podcasts"
+  ]
+}
