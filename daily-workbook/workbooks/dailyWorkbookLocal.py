@@ -1714,7 +1714,6 @@ STYLES = """
   .sticker-label { font-size:11px; font-weight:800; color:#7b5164; }
 
   .mascot { font-size:12px; display:inline-block; padding:5px 10px; border:2px dashed #c8b6ff; border-radius:999px; background:#f7f4ff; color:#5d4d85; margin-top:8px; font-weight:800; }
-  .day-banner { display:inline-block; padding:5px 14px; border-radius:999px; border:2px solid #333; font-size:13px; font-weight:800; margin:4px 0 12px; }
 
   .dog-block { border:2px dashed #FFAB76; border-radius:16px; background:#FFF5EC; padding:12px 14px; margin-bottom:10px; }
   .dog-block-title { font-size:14px; font-weight:800; color:#7A4010; margin-bottom:8px; }
@@ -1800,42 +1799,40 @@ STYLES = """
   .offline-headline { font-size:18px; font-weight:800; color:#2F5277; margin-bottom:4px; }
   .evening-dog { border:2px dashed #C8A0E0; border-radius:16px; background:#F9F2FF; padding:12px 14px; margin-bottom:10px; }
 
-  .moon-card { border:2px dashed #9B8EC4; border-radius:18px; background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%); padding:16px 18px; margin-bottom:12px; color:#e8e0f0; }
-  .moon-emoji { font-size:52px; text-align:center; margin-bottom:8px; display:block; }
-  .moon-phase-name { font-size:22px; font-weight:800; color:#e8d5ff; text-align:center; margin-bottom:4px; }
-  .moon-illumination { font-family:Menlo,Monaco,monospace; font-size:11px; color:#9b8ec4; text-align:center; margin-bottom:12px; }
-  .moon-section-label { font-family:Menlo,Monaco,monospace; font-size:10px; color:#7b6fa8; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px; }
-  .moon-text { font-size:13px; color:#d4c8f0; line-height:1.55; margin-bottom:10px; }
-  .moon-reflection { border:2px dashed #4a3f6b; border-radius:12px; background:rgba(255,255,255,0.06); padding:10px 12px; margin:10px 0; }
-  .moon-reflection-q { font-size:14px; font-weight:800; color:#e8d5ff; margin-bottom:6px; }
-  .moon-ritual { border-left:3px solid #7b6fa8; padding-left:10px; margin:10px 0; }
-  .moon-ritual-text { font-size:13px; color:#c8b8e8; font-style:italic; }
-  .moon-write-line { border-bottom:1px dashed #4a3f6b; height:26px; margin-bottom:8px; }
-  .full-moon-alert { border:2px solid #FFD700; border-radius:14px; background:rgba(255,215,0,0.12); padding:12px 14px; margin-top:12px; }
-  .full-moon-alert-title { font-size:14px; font-weight:800; color:#FFD700; margin-bottom:6px; }
-  .full-moon-alert-text { font-size:13px; color:#ffe066; line-height:1.5; }
-  .new-moon-alert { border:2px solid #C8B6FF; border-radius:14px; background:rgba(200,182,255,0.10); padding:12px 14px; margin-top:12px; }
-  .new-moon-alert-title { font-size:14px; font-weight:800; color:#C8B6FF; margin-bottom:6px; }
-  .new-moon-alert-text { font-size:13px; color:#d4c8f0; line-height:1.5; }
+  .moon-card { border:2px solid #9B8EC4; border-radius:18px; background:#fff; padding:14px 16px; margin-bottom:12px; color:#2b2540; }
+  .moon-emoji { font-size:40px; text-align:center; margin-bottom:4px; display:block; }
+  .moon-phase-name { font-size:22px; font-weight:800; color:#2b2540; text-align:center; margin-bottom:4px; }
+  .moon-illumination { font-family:Menlo,Monaco,monospace; font-size:12px; color:#444; text-align:center; margin-bottom:12px; }
+  .moon-section-label { font-family:Menlo,Monaco,monospace; font-size:11px; color:#555; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:3px; font-weight:700; }
+  .moon-text { font-size:13px; color:#222; line-height:1.55; margin-bottom:10px; }
+  .moon-reflection { border:1.5px solid #9B8EC4; border-radius:12px; background:#fff; padding:10px 12px; margin:0 0 6px; }
+  .moon-reflection-q { font-size:14px; font-weight:800; color:#2b2540; }
+  .moon-ritual { border-left:3px solid #9B8EC4; padding-left:10px; margin:10px 0; }
+  .moon-ritual-text { font-size:13px; color:#222; font-style:italic; }
+  .moon-write-line { border-bottom:1px solid #bbb; height:26px; margin-bottom:8px; }
+  .full-moon-alert, .new-moon-alert { border:1.5px solid #9B8EC4; border-radius:14px; background:#fff; padding:10px 12px; margin-top:12px; }
+  .full-moon-alert { border-color:#C9A227; }
+  .full-moon-alert-title, .new-moon-alert-title { font-size:14px; font-weight:800; color:#222; margin-bottom:6px; }
+  .full-moon-alert-text, .new-moon-alert-text { font-size:13px; color:#333; line-height:1.5; }
 
-  .cycle-card { border-radius:18px; padding:16px 18px; margin-bottom:12px; }
-  .cycle-phase-name { font-size:22px; font-weight:800; margin-bottom:2px; }
-  .cycle-day-label { font-family:Menlo,Monaco,monospace; font-size:11px; margin-bottom:12px; opacity:0.7; }
-  .cycle-section-label { font-family:Menlo,Monaco,monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:4px; opacity:0.6; }
-  .cycle-text { font-size:13px; line-height:1.55; margin-bottom:10px; opacity:0.9; }
+  .cycle-card { border:2px solid #ccc; border-radius:18px; padding:14px 16px; margin-bottom:12px; background:#fff; color:#222; }
+  .cycle-phase-name { font-size:22px; font-weight:800; margin-bottom:2px; color:#222; }
+  .cycle-day-label { font-family:Menlo,Monaco,monospace; font-size:12px; margin-bottom:10px; color:#555; }
+  .cycle-section-label { font-family:Menlo,Monaco,monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:3px; color:#555; font-weight:700; }
+  .cycle-text { font-size:13px; line-height:1.55; margin-bottom:10px; color:#222; }
   .cycle-row { overflow:hidden; margin-bottom:10px; }
   .cycle-row > * { float:left; width:48%; margin-right:2%; box-sizing:border-box; }
-  .cycle-block { border-radius:12px; padding:10px 12px; background:rgba(255,255,255,0.07); }
-  .cycle-block-title { font-size:11px; font-weight:800; margin-bottom:4px; opacity:0.7; text-transform:uppercase; letter-spacing:0.06em; }
-  .cycle-block-text { font-size:12px; line-height:1.45; opacity:0.85; }
-  .cycle-alert { border-radius:12px; padding:10px 12px; background:rgba(255,255,255,0.1); border:1.5px solid rgba(255,255,255,0.2); margin-top:10px; }
-  .cycle-alert-title { font-size:13px; font-weight:800; margin-bottom:4px; }
-  .cycle-alert-text { font-size:12px; opacity:0.85; line-height:1.45; }
-  .cycle-emotional { border-radius:12px; padding:12px 14px; background:rgba(255,255,255,0.06); margin-top:10px; }
-  .cycle-emotional-q { font-size:14px; font-weight:800; margin-bottom:8px; }
-  .cycle-write-line { border-bottom:1px dashed rgba(255,255,255,0.2); height:26px; margin-bottom:8px; }
-  .cycle-bar-wrap { display:flex; gap:3px; margin:8px 0; }
-  .cycle-bar-seg { height:8px; border-radius:4px; flex:1; }
+  .cycle-block { border-radius:12px; padding:9px 12px; background:#fff; border:1px solid #ccc; }
+  .cycle-block-title { font-size:11px; font-weight:800; margin-bottom:4px; color:#555; text-transform:uppercase; letter-spacing:0.06em; }
+  .cycle-block-text { font-size:12.5px; line-height:1.45; color:#222; }
+  .cycle-alert { border-radius:12px; padding:9px 12px; background:#fff; border:1.5px solid #ccc; margin-top:10px; }
+  .cycle-alert-title { font-size:13px; font-weight:800; margin-bottom:4px; color:#222; }
+  .cycle-alert-text { font-size:12.5px; color:#333; line-height:1.45; }
+  .cycle-emotional { border-radius:12px; padding:10px 12px; background:#fff; border:1px solid #ccc; margin-top:10px; }
+  .cycle-emotional-q { font-size:14px; font-weight:800; margin-bottom:8px; color:#222; }
+  .cycle-write-line { border-bottom:1px solid #bbb; height:26px; margin-bottom:8px; }
+  .cycle-bar-wrap { display:flex; gap:3px; margin:8px 0 4px; }
+  .cycle-bar-seg { height:8px; border-radius:4px; flex:1; border:1px solid #bbb; background:#fff; }
 
   .weather-card { border:2px dashed #90BFDF; border-radius:18px; background:#EFF7FF; padding:14px 16px; margin-bottom:12px; }
   .weather-main { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
@@ -1941,14 +1938,6 @@ def build_html(wb: dict) -> str:
     is_therapy = dtype == "therapy"
     is_weekend = dtype == "weekend"
 
-    day_banner_colors = {
-        "work":    ("💼 Work day — focused study block",    "#D6EAF8", "#1A5276"),
-        "free":    ("✨ Free day — deep study session",      "#D5F5E3", "#1E6B3A"),
-        "therapy": ("🧠 Therapy day — keep it gentle",      "#E8DAEF", "#6C3483"),
-        "weekend": ("🎉 Weekend — your pace, your rules",   "#FDEBD0", "#784212"),
-    }
-    banner_text, banner_bg, banner_fg = day_banner_colors.get(dtype, ("Today", "#eee", "#333"))
-
     # ── Helper lambdas ────────────────────────────────────────────────────────
 
     def blank_lines(count, color="#D8D0C8", height=24):
@@ -2031,7 +2020,6 @@ def build_html(wb: dict) -> str:
   <div class="main-title">✨ {esc(theme["title"])} ✨</div>
   <div class="sub-title">{esc(theme["subtitle"])} · {esc(date_label)}</div>
   <div class="mascot">Today's mascot: {esc(theme["mascot"])}</div>
-  <div class="day-banner" style="background:{banner_bg};color:{banner_fg};">{banner_text}</div>
 
   <div class="one-thing-box">
     <div class="one-thing-label">Before anything else —</div>
@@ -2677,9 +2665,9 @@ def build_html(wb: dict) -> str:
     next_full_note = ""
     if not moon_is_full and not moon_soon and not moon_is_new and not moon_new_soon:
         days_note_parts = []
-        days_note_parts.append(f'Next full moon: <strong style="color:#c8b8e8;">{esc(moon_full_label)}</strong> — {moon_days_full:.0f} days away')
-        days_note_parts.append(f'Next new moon: <strong style="color:#c8b8e8;">{esc(moon_new_date)}</strong> — {_when(moon_days_new)}')
-        next_full_note = f'<div class="moon-text" style="margin-top:8px;color:#7b6fa8;">{" · ".join(days_note_parts)}</div>'
+        days_note_parts.append(f'Next full moon: <strong>{esc(moon_full_label)}</strong> — {moon_days_full:.0f} days away')
+        days_note_parts.append(f'Next new moon: <strong>{esc(moon_new_date)}</strong> — {_when(moon_days_new)}')
+        next_full_note = f'<div class="moon-text" style="margin-top:8px;color:#444;">{" · ".join(days_note_parts)}</div>'
 
     parts.append(f"""
 <div class="page flow"><div class="frame">
@@ -2709,11 +2697,11 @@ def build_html(wb: dict) -> str:
     {next_full_note}
   </div>
 
-  <div class="card" style="background:#1a1a2e;border-color:#4a3f6b;">
+  <div class="card">
     <div class="moon-reflection">
       <div class="moon-reflection-q">✦ {esc(mp_reflect_q)}</div>
     </div>
-    <div style="margin-top:10px;">
+    <div style="margin-top:6px;">
       {''.join('<div class="moon-write-line"></div>' for _ in range(5))}
     </div>
   </div>
@@ -2738,7 +2726,6 @@ def build_html(wb: dict) -> str:
     if cycle_avail and cycle_phase:
         p_name    = cycle_phase.get("name", "Unknown")
         p_emoji   = cycle_phase.get("emoji", "🌀")
-        p_bg      = cycle_phase.get("bg_color", "#1a1a2e")
         p_accent  = cycle_phase.get("accent", "#c8b8e8")
         p_energy  = cycle_phase.get("energy", "")
         p_kw      = cycle_phase.get("keywords", "")
@@ -2750,32 +2737,29 @@ def build_html(wb: dict) -> str:
         p_pms     = cycle_phase.get("pms_warning", False)
 
         # Cycle progress bar — 4 segments: menstrual / follicular / ovulatory / luteal
-        seg_colors = {
-            "menstrual":    ("#C8697A", "#3a1520", "#3a1520", "#3a1520"),
-            "follicular":   ("#3a1520", "#6BCB8B", "#3a1520", "#3a1520"),
-            "ovulatory":    ("#3a1520", "#3a1520", "#FFD166", "#3a1520"),
-            "luteal_early": ("#3a1520", "#3a1520", "#3a1520", "#D4956A"),
-            "luteal_late":  ("#3a1520", "#3a1520", "#3a1520", "#9B8EC4"),
-        }
-        segs = seg_colors.get(cycle_phase_key, ("#3a1520","#3a1520","#3a1520","#3a1520"))
+        seg_keys   = ["menstrual", "follicular", "ovulatory", "luteal"]
+        active_seg = "luteal" if cycle_phase_key.startswith("luteal") else cycle_phase_key
         seg_labels = ["Menstrual", "Follicular", "Ovulatory", "Luteal"]
-        bar_html = "".join(f'<div class="cycle-bar-seg" style="background:{c};" title="{l}"></div>' for c,l in zip(segs, seg_labels))
+        bar_html = "".join(
+            f'<div class="cycle-bar-seg" style="background:{p_accent};border-color:{p_accent};" title="{l}"></div>'
+            if k == active_seg else f'<div class="cycle-bar-seg" title="{l}"></div>'
+            for k, l in zip(seg_keys, seg_labels))
 
         # Alerts
         alerts_html = ""
         if period_soon:
             alerts_html += f'''<div class="cycle-alert" style="border-color:#C8697A;">
-              <div class="cycle-alert-title" style="color:#C8697A;">🌹 Period arriving {_when(days_to_period)}</div>
+              <div class="cycle-alert-title">🌹 Period arriving {_when(days_to_period)}</div>
               <div class="cycle-alert-text">Stock up on comfort supplies. Be extra gentle with your expectations over the next few days.</div>
             </div>'''
         if ovul_soon:
-            alerts_html += f'''<div class="cycle-alert" style="border-color:#FFD166;">
-              <div class="cycle-alert-title" style="color:#FFD166;">☀️ Ovulation window {_when(days_to_ovul)}</div>
+            alerts_html += f'''<div class="cycle-alert" style="border-color:#E0A800;">
+              <div class="cycle-alert-title">☀️ Ovulation window {_when(days_to_ovul)}</div>
               <div class="cycle-alert-text">Your peak energy window is coming. Plan your most important tasks or social moments for then.</div>
             </div>'''
         if p_pms:
             alerts_html += f'''<div class="cycle-alert" style="border-color:#9B8EC4;">
-              <div class="cycle-alert-title" style="color:#9B8EC4;">💜 PMS territory — be kind to yourself</div>
+              <div class="cycle-alert-title">💜 PMS territory — be kind to yourself</div>
               <div class="cycle-alert-text">What you're feeling is real and physiological. Don't make big decisions today. Rest is productive right now.</div>
             </div>'''
 
@@ -2783,7 +2767,7 @@ def build_html(wb: dict) -> str:
 <div class="page flow"><div class="frame">
   {section_title("inner season", "Cycle phase", "body wisdom")}
 
-  <div class="cycle-card" style="background:{p_bg};color:{p_accent};">
+  <div class="cycle-card" style="border-color:{p_accent};">
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
       <span style="font-size:36px;">{p_emoji}</span>
       <div>
@@ -2793,7 +2777,7 @@ def build_html(wb: dict) -> str:
     </div>
 
     <div class="cycle-bar-wrap">{bar_html}</div>
-    <div style="font-size:11px;opacity:0.5;font-family:monospace;margin-bottom:12px;">Menstrual · Follicular · Ovulatory · Luteal</div>
+    <div style="font-size:11px;color:#555;font-family:monospace;margin-bottom:12px;">Menstrual · Follicular · Ovulatory · Luteal</div>
 
     <div class="cycle-section-label">Energy &amp; phase</div>
     <div class="cycle-text">{esc(p_energy)} — {esc(p_kw)}</div>
@@ -2817,26 +2801,25 @@ def build_html(wb: dict) -> str:
       <div class="cycle-block-text">{esc(p_food)}</div>
     </div>
 
-    <div class="cycle-block" style="margin-bottom:10px;border:1.5px solid rgba(255,255,255,0.15);">
+    <div class="cycle-block" style="margin-bottom:10px;">
       <div class="cycle-block-title">🍵 Tea blend for today</div>
       <div class="cycle-block-text" style="font-weight:800;margin-bottom:4px;">{esc(cycle_phase.get("tea",{}).get("blend",""))}</div>
       <div class="cycle-block-text">{esc(cycle_phase.get("tea",{}).get("why",""))}</div>
-      <div class="cycle-block-text" style="font-style:italic;opacity:0.7;margin-top:4px;">💡 {esc(cycle_phase.get("tea",{}).get("notes",""))}</div>
+      <div class="cycle-block-text" style="font-style:italic;color:#444;margin-top:4px;">💡 {esc(cycle_phase.get("tea",{}).get("notes",""))}</div>
     </div>
 
     {alerts_html}
 
-    <div class="cycle-emotional" style="color:{p_accent};">
+    <div class="cycle-emotional">
       <div class="cycle-emotional-q">💬 {esc(p_emo)}</div>
       {''.join('<div class="cycle-write-line"></div>' for _ in range(2))}
     </div>
-  </div>
 
-  <div class="card" style="background:#f9f3ff;border-color:#c8b6ff;">
-    <div class="mini-title" style="color:#5d4085;">Coming up this cycle</div>
-    {'<div class="footer-note">🌹 Period: arriving in ' + str(days_to_period) + ' days</div>' if days_to_period > 0 else '<div class="footer-note">🌹 Period: today or very soon</div>'}
-    {'<div class="footer-note" style="margin-top:4px;">☀️ Ovulation window: in ' + str(days_to_ovul) + ' days (day ' + str(OVULATION_DAY) + '±2)</div>' if days_to_ovul > 0 else ""}
-    <div class="footer-note" style="margin-top:8px;color:#aaa;font-size:11px;">Last period logged: {esc(cycle_data.get("last_period_start","unknown"))} · Update with: python3 dailyWorkbookLocal.py --log-period</div>
+    <div class="cycle-text" style="margin:10px 0 0;">
+      <strong>Coming up:</strong>
+      {'🌹 Period in ' + str(days_to_period) + ' days' if days_to_period > 0 else '🌹 Period today or very soon'}{' · ☀️ Ovulation window in ' + str(days_to_ovul) + ' days (day ' + str(OVULATION_DAY) + '±2)' if days_to_ovul > 0 else ""}
+    </div>
+    <div class="cycle-day-label" style="margin:4px 0 0;font-size:10.5px;">Last period logged: {esc(cycle_data.get("last_period_start","unknown"))} · update with --log-period</div>
   </div>
   <div style="flex:1"></div>
 </div></div>
@@ -2847,11 +2830,11 @@ def build_html(wb: dict) -> str:
         parts.append(f"""
 <div class="page flow"><div class="frame">
   {section_title("inner season", "Cycle phase", "body wisdom")}
-  <div class="card" style="background:#f9f3ff;border-color:#c8b6ff;text-align:center;padding:30px 20px;">
+  <div class="card" style="text-align:center;padding:30px 20px;">
     <div style="font-size:36px;margin-bottom:12px;">🌹</div>
     <div class="mini-title" style="color:#5d4085;">Set up cycle tracking</div>
     <div class="footer-note" style="margin-bottom:16px;">Run this command when your next period starts to activate this section:</div>
-    <div style="background:#1a1a2e;color:#c8b8e8;font-family:monospace;font-size:13px;padding:12px 16px;border-radius:10px;display:inline-block;">python3 dailyWorkbookLocal.py --log-period</div>
+    <div style="background:#fff;border:1.5px solid #999;color:#222;font-family:monospace;font-size:13px;padding:12px 16px;border-radius:10px;display:inline-block;">python3 dailyWorkbookLocal.py --log-period</div>
     <div class="footer-note" style="margin-top:12px;color:#aaa;">You can also log a past date: --log-period 2026-05-01</div>
   </div>
   <div style="flex:1"></div>
