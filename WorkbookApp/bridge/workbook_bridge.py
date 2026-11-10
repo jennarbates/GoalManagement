@@ -210,11 +210,13 @@ def today_payload(d: date) -> dict:
     practice = pack.get("char_practice") or {}
 
     cards = []
-    if algo:
+    if algo and algo["course_order"]:
+        qs = algo["course_order"] + ([algo["random"]] if algo["random"] else [])
+        topics = list(dict.fromkeys(q["topic"] for q in algo["course_order"]))
         cards.append({
             "id": f"cs311-{d}", "kind": "algorithms", "course": "CS311",
-            "title": f"{algo['topic']} ({algo['chapter']})",
-            "detail": "Worked: " + "; ".join(p["title"] for p in algo["worked"]),
+            "title": f"{' + '.join(topics)} ({algo['course_order'][0]['chapter']})",
+            "detail": "Worked: " + "; ".join(q["worked"]["title"] for q in qs),
             "url": "https://people.cs.umass.edu/~sheldon/teaching/cs311/index.html"})
     lcmod = getattr(dwl, "leetcode", None)
     lc = lcmod.daily_set(d, mark=False) if lcmod else None

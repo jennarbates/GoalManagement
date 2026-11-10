@@ -128,7 +128,7 @@ HSK_WORD_INDEX = {w["char"]: w for w in HSK1_VOCAB}
 
 # ── HSK progress ──────────────────────────────────────────────────────────────
 
-HSK_PROGRESS_PATH = os.path.expanduser("~/Documents/daily-workbook/hsk1_progress.json")
+HSK_PROGRESS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hsk1_progress.json")
 LESSONS_PER_DAY = 4
 
 
@@ -193,12 +193,14 @@ def items_for_date(d: date, hsk_progress: dict) -> list[dict]:
 
     hsk_label = practice_char_for_day(d, hsk_progress)
 
-    items = [
+    items = [] if not algo["course_order"] else [
         {
             "id": f"cs311-{date_str}",
             "type": "assignment",
             "course": "CS311",
-            "title": f"{algo['topic']}: 3 worked + 3 practice problems",
+            "title": (", ".join(f"{q['topic']} Q{q['question_number']}" for q in algo["course_order"])
+                      + f" + random: {algo['random']['topic']} Q{algo['random']['question_number']}"
+                      + (f" + {len(algo['review'])} review" if algo.get("review") else "")),
             "due": date_str,
             "all_day": True,
         },

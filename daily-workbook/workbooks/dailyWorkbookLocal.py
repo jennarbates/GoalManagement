@@ -24,7 +24,7 @@ Required for email:
     export GMAIL_APP_PASSWORD="your_16_char_gmail_app_password"
 
 Run:
-    python3 dailyWorkbook.py
+    python3 dailyWorkbookLocal.py
 """
 
 import html as py_html
@@ -61,6 +61,18 @@ try:
     import leetcode
 except ImportError:
     leetcode = None
+try:
+    import hanzi
+except ImportError:
+    hanzi = None
+try:
+    import cs311_visuals
+except ImportError:
+    cs311_visuals = None
+try:
+    import italian
+except ImportError:
+    italian = None
 
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -72,9 +84,12 @@ SENDER_EMAIL    = os.environ.get("WORKBOOK_SENDER_EMAIL", "")
 RECIPIENT_EMAIL = os.environ.get("WORKBOOK_RECIPIENT_EMAIL", SENDER_EMAIL)
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 
-OUTPUT_DIR      = Path.home() / "Documents" / "daily-workbook"
-PROGRESS_FILE   = OUTPUT_DIR / "hsk1_progress.json"
-PARKING_LOT_FILE = Path(__file__).parent / "parking_lot.txt"
+# Data (progress files, lists) lives in daily-workbook/; generated workbooks go
+# next to this script in daily-workbook/workbooks/ (HTML/PDF are gitignored).
+DATA_DIR        = Path(__file__).resolve().parent.parent
+OUTPUT_DIR      = Path(__file__).resolve().parent
+PROGRESS_FILE   = DATA_DIR / "hsk1_progress.json"
+PARKING_LOT_FILE = Path(__file__).resolve().parent.parent / "parking_lot.txt"  # daily-workbook/parking_lot.txt
 
 MAX_TOKENS      = 1800
 MAX_JSON_RETRIES = 1
@@ -117,11 +132,20 @@ def day_type(weekday: int) -> str:
 def esc(text) -> str:
     return py_html.escape("" if text is None else str(text))
 
+# The day this workbook is for. None = today. Set by --date so a batch can
+# build future days ahead of time; everything date-dependent reads wb_now().
+WORKBOOK_DATE = None
+
+def wb_now() -> datetime:
+    if WORKBOOK_DATE is None:
+        return datetime.now()
+    return datetime.combine(WORKBOOK_DATE, datetime.now().time())
+
 def today_stamp() -> str:
-    return datetime.now().strftime("%Y-%m-%d")
+    return wb_now().strftime("%Y-%m-%d")
 
 def today_label() -> str:
-    return datetime.now().strftime("%A, %B %d, %Y")
+    return wb_now().strftime("%A, %B %d, %Y")
 
 def ensure_output_dir() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -477,36 +501,79 @@ PHASE_SPIRITUAL = {
 }
 
 
-def get_moon_phase(dt: datetime | None = None) -> dict:
-    """Calculate moon phase purely from math. No network required."""
-    if dt is None:
-        dt = datetime.now()
+_SYNODIC_MONTH = 29.530588861  # mean days between new moons
+_J2000_UTC = datetime(2000, 1, 1, 12)  # Julian Day 2451545.0
 
-    # Known new moon: Jan 6 2000 18:14 UTC (J2000 epoch)
-    known_new    = datetime(2000, 1, 6, 18, 14)
-    lunar_cycle  = 29.53058867  # days
-    diff_days    = (dt - known_new).total_seconds() / 86400
-    phase_day    = diff_days % lunar_cycle
+
+def _moon_event_utc(k: float) -> datetime:
+    """Exact time (UTC, naive) of lunation k: integer k = new moon, k+0.5 = full moon.
+
+    Meeus, Astronomical Algorithms ch. 49, with the largest periodic terms —
+    good to within roughly half an hour, versus up to ~14 h for a mean cycle.
+    k = 0 is the new moon of 2000-01-06.
+    """
+    rad = math.radians
+    T = k / 1236.85
+    jde = (2451550.09766 + _SYNODIC_MONTH * k
+           + 0.00015437 * T**2 - 0.000000150 * T**3 + 0.00000000073 * T**4)
+    E  = 1 - 0.002516 * T - 0.0000074 * T**2
+    M  = rad(2.5534 + 29.10535670 * k - 0.0000014 * T**2)            # sun's anomaly
+    Mp = rad(201.5643 + 385.81693528 * k + 0.0107582 * T**2)         # moon's anomaly
+    F  = rad(160.7108 + 390.67050284 * k - 0.0016118 * T**2)         # moon's latitude arg
+    if k % 1 == 0:  # new moon
+        c = (-0.40720, 0.17241, 0.01608, 0.01039, 0.00739, -0.00514, 0.00208)
+    else:           # full moon
+        c = (-0.40614, 0.17302, 0.01614, 0.01043, 0.00734, -0.00515, 0.00209)
+    jde += (c[0] * math.sin(Mp) + c[1] * E * math.sin(M) + c[2] * math.sin(2 * Mp)
+            + c[3] * math.sin(2 * F) + c[4] * E * math.sin(Mp - M)
+            + c[5] * E * math.sin(Mp + M) + c[6] * E**2 * math.sin(2 * M))
+    return _J2000_UTC + timedelta(days=jde - 2451545.0)
+
+
+def get_moon_phase(dt: datetime | None = None) -> dict:
+    """Calculate moon phase purely from math. No network required.
+
+    `dt` is local wall-clock time (what wb_now() returns). "New Moon" and
+    "Full Moon" mean that exact moment falls on this local calendar date, so
+    the phase name and the "new moon today" banner always agree.
+    """
+    if dt is None:
+        dt = wb_now()
+    utc_offset = dt.astimezone().utcoffset() or timedelta(0)
+    dt_utc     = dt - utc_offset
+    to_local   = lambda u: u + utc_offset
+
+    # Bracket dt between the new moon before it and the one after it
+    k = math.floor((dt_utc - _moon_event_utc(0)).total_seconds() / 86400 / _SYNODIC_MONTH)
+    while _moon_event_utc(k) > dt_utc:     k -= 1
+    while _moon_event_utc(k + 1) <= dt_utc: k += 1
+    prev_new, next_new = _moon_event_utc(k), _moon_event_utc(k + 1)
+    full_this = _moon_event_utc(k + 0.5)
+
+    lunar_cycle  = (next_new - prev_new).total_seconds() / 86400
+    phase_day    = (dt_utc - prev_new).total_seconds() / 86400
     illumination = (1 - math.cos(2 * math.pi * phase_day / lunar_cycle)) / 2
 
-    if phase_day < 1.85:      phase_name, emoji = "New Moon",        "🌑"
-    elif phase_day < 7.38:    phase_name, emoji = "Waxing Crescent", "🌒"
-    elif phase_day < 9.22:    phase_name, emoji = "First Quarter",   "🌓"
-    elif phase_day < 14.77:   phase_name, emoji = "Waxing Gibbous",  "🌔"
-    elif phase_day < 16.61:   phase_name, emoji = "Full Moon",       "🌕"
-    elif phase_day < 22.15:   phase_name, emoji = "Waning Gibbous",  "🌖"
-    elif phase_day < 23.99:   phase_name, emoji = "Last Quarter",    "🌗"
-    else:                      phase_name, emoji = "Waning Crescent", "🌘"
+    today    = dt.date()
+    is_new   = to_local(prev_new).date() == today or to_local(next_new).date() == today
+    is_full  = to_local(full_this).date() == today
+    quarter  = lambda frac: abs(phase_day - lunar_cycle * frac) < 0.5  # within the day
 
-    # Days until next full moon
-    full_day = lunar_cycle / 2
-    if phase_day <= full_day:
-        days_to_full = full_day - phase_day
-    else:
-        days_to_full = lunar_cycle - phase_day + full_day
+    if is_new:                    phase_name, emoji = "New Moon",        "🌑"
+    elif is_full:                 phase_name, emoji = "Full Moon",       "🌕"
+    elif quarter(0.25):           phase_name, emoji = "First Quarter",   "🌓"
+    elif quarter(0.75):           phase_name, emoji = "Last Quarter",    "🌗"
+    elif phase_day < lunar_cycle * 0.25: phase_name, emoji = "Waxing Crescent", "🌒"
+    elif full_this > dt_utc:      phase_name, emoji = "Waxing Gibbous",  "🌔"
+    elif phase_day < lunar_cycle * 0.75: phase_name, emoji = "Waning Gibbous", "🌖"
+    else:                         phase_name, emoji = "Waning Crescent", "🌘"
+
+    # Next full moon (this lunation's, unless it has already passed)
+    next_full = full_this if (full_this > dt_utc or is_full) else _moon_event_utc(k + 1.5)
+    days_to_full = max(0.0, (next_full - dt_utc).total_seconds() / 86400)
 
     # Full moon date
-    full_moon_dt   = dt + timedelta(days=days_to_full)
+    full_moon_dt   = to_local(next_full)
     full_moon_month = full_moon_dt.month
     moon_name, moon_lore = FULL_MOON_NAMES.get(full_moon_month, ("Full Moon", "A time of completion and release."))
     full_moon_label = f"{moon_name} — {full_moon_dt.strftime('%B %d')}"
@@ -514,15 +581,15 @@ def get_moon_phase(dt: datetime | None = None) -> dict:
     # Spiritual meaning for current phase
     keywords, reflection_prompt = PHASE_SPIRITUAL.get(phase_name, ("Mystery", "Sit with the unknown."))
 
-    is_full         = phase_name == "Full Moon"
-    is_new          = phase_name == "New Moon"
     full_moon_soon  = days_to_full <= 3 and not is_full
 
-    # Days until next new moon
-    days_to_new = lunar_cycle - phase_day  # new moon is at day 0/29.5
-    if phase_day < 1.85:  # we ARE at new moon
+    # Next new moon (today's, if it happens today)
+    if is_new:
         days_to_new = 0.0
-    new_moon_dt   = dt + timedelta(days=days_to_new)
+        new_moon_dt = to_local(prev_new if to_local(prev_new).date() == today else next_new)
+    else:
+        days_to_new = (next_new - dt_utc).total_seconds() / 86400
+        new_moon_dt = to_local(next_new)
     new_moon_soon = days_to_new <= 3 and not is_new
 
     NEW_MOON_LORE = (
@@ -555,7 +622,7 @@ def get_moon_phase(dt: datetime | None = None) -> dict:
 
 # ── Cycle tracking ────────────────────────────────────────────────────────────
 
-CYCLE_FILE = OUTPUT_DIR / "cycle_progress.json"
+CYCLE_FILE = DATA_DIR / "cycle_progress.json"
 
 
 def _cycle_setting(key: str, default: int) -> int:
@@ -737,7 +804,7 @@ def get_cycle_info() -> dict:
         }
 
     last_dt  = datetime.strptime(last_start, "%Y-%m-%d")
-    today_dt = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_dt = wb_now().replace(hour=0, minute=0, second=0, microsecond=0)
     cycle_day = (today_dt - last_dt).days + 1  # Day 1 = first day of period
 
     # Handle cycle rollover
@@ -914,11 +981,11 @@ def weather_emoji(desc: str) -> str:
 
 def get_day_context() -> dict:
     date_str  = today_stamp()
-    weekday   = datetime.now().weekday()
+    weekday   = wb_now().weekday()
     dtype     = day_type(weekday)
     seed      = random.randint(1, 99999)
     start      = datetime(2026, 5, 12)
-    day_num    = max(1, (datetime.now() - start).days + 1)
+    day_num    = max(1, (wb_now() - start).days + 1)
     cert_day   = day_num
     weekly_task, weekly_note, weekly_time = CHORE_SCHEDULE[weekday]
     progress  = load_hsk_progress()
@@ -1005,7 +1072,7 @@ def generate_morning_page(ctx: dict) -> dict:
 
 
 def generate_algorithms_page(ctx: dict) -> dict:
-    """CS311: one random course topic, 3 worked problems + 3 to try (cs311.py)."""
+    """CS311: today's course-order questions + one random question (cs311.py)."""
     if cs311 is None:
         return {}
     return cs311.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
@@ -1363,16 +1430,16 @@ def generate_workbook_content() -> dict:
     wb["_morning"]    = generate_morning_page(ctx)
     wb["_algorithms"] = generate_algorithms_page(ctx)
     wb["_leetcode"]   = generate_leetcode_page(ctx)
+    wb["_italian"]    = italian.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date()) if italian else {}
     wb["_reading"]    = generate_reading_page(ctx)
     wb["chores_page"] = generate_chores_page(ctx)
     wb["_admin_parking"] = generate_admin_parking(ctx)
-    wb["_offline"] = offline_plan.today_summary() if offline_plan else {}
+    wb["_offline"] = offline_plan.today_summary(wb_now().date()) if offline_plan else {}
     wb.update(build_chinese_pages(ctx))
     wb["_moon"]           = ctx["moon"]
     wb["_weather"]        = ctx["weather"]
     wb["_moon_page"]      = generate_moon_page(ctx)
     wb["_cycle"]          = ctx["cycle"]
-    wb["creativity_page"] = generate_creativity_page(ctx)
     wb.update(generate_reflection_and_back(ctx))
 
     wb["_hsk_internal"] = ctx["today_hsk"]
@@ -1669,21 +1736,66 @@ STYLES = """
   .lc-statement { font-size:13px; font-weight:700; color:#3c3c3c; line-height:1.45; margin-bottom:6px; }
   .lc-example { font-family:Menlo,Monaco,monospace; font-size:11px; line-height:1.5; background:#F6F8FB; border:1px solid #DCE4EE; border-radius:8px; padding:6px 9px; margin:5px 0; color:#333; }
   .lc-why { font-family:inherit; color:#777; }
+  .lc-ex-grid { display:grid; grid-template-columns:1fr 1fr; gap:0 8px; }
+  .lc-ex-grid .lc-example { margin:4px 0; }
   .lc-howto { font-size:12px; line-height:1.45; color:#4a4a4a; background:#FFFBF0; }
   .lc-step { display:flex; gap:10px; margin-bottom:6px; }
   .lc-letter { flex:0 0 26px; height:26px; border-radius:50%; background:#2F5277; color:white; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center; margin-top:2px; }
   .lc-step-body { flex:1; }
+  .umpire-key { display:grid; grid-template-columns:1fr 1fr; gap:3px 14px; margin:7px 0; font-size:11.5px; }
+  .umpire-key > div { display:flex; align-items:center; gap:6px; }
+  .lc-letter.sm { flex:0 0 18px; width:18px; height:18px; font-size:10px; margin:0; display:inline-flex; }
   .lc-meta { font-size:11px; font-weight:600; color:#8a8a8a; }
   .lc-review { margin-bottom:8px; }
   .lc-hint { font-size:12.5px; line-height:1.45; padding:6px 0; border-bottom:1px dashed #DCE4EE; }
   .lc-code { font-family:Menlo,Monaco,monospace; font-size:10.5px; line-height:1.45; background:#F6F8FB; border:1px solid #DCE4EE; border-radius:8px; padding:8px 10px; white-space:pre-wrap; margin:6px 0; color:#222; }
   .prompt-text { font-size:13px; font-weight:700; color:#3c3c3c; line-height:1.45; margin:6px 0 2px; }
   .prompt-follow { font-size:12px; font-style:italic; color:#6a6a6a; line-height:1.4; margin-bottom:2px; }
+  .hz-card { padding:10px 14px; margin-bottom:9px; }
+  .hz-head { display:flex; gap:12px; align-items:center; margin-bottom:6px; }
+  .hz-title { font-size:26px; font-weight:800; color:#2B665E; }
+  .hz-pinyin { font-size:15px; font-weight:600; color:#6a6a6a; margin-left:6px; }
+  .so-strip { display:flex; flex-wrap:wrap; gap:4px; margin:4px 0 8px; }
+  .so-cell { position:relative; }
+  .so-num { position:absolute; top:1px; left:4px; font-size:8px; font-weight:800; color:#E56D5C; }
+  .tzg-row { display:flex; gap:3px; margin-bottom:4px; }
+  .tzg { display:block; }
+  .ms-grid { margin-top:8px; }
+  .ms-row { display:flex; margin-bottom:6px; }
+  .ms-row .tzg { margin-right:-1px; }
+  .algo-intro { background:#FFFBF0; border-color:#F5D38B; padding:12px 16px; }
+  .algo-kicker { display:block; font-family:Menlo,Monaco,monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#9a7b3c; margin-bottom:2px; }
+  .algo-bigidea { font-size:15px; font-weight:700; color:#3c3c3c; line-height:1.45; margin-bottom:8px; }
+  .algo-picture { font-size:13px; color:#4a4a4a; line-height:1.5; margin-bottom:6px; }
+  .algo-signals { margin-top:6px; }
+  .algo-num { font-family:Menlo,Monaco,monospace; font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#8a7a6a; }
+  .viz { margin:8px 0; text-align:center; }
+  .viz svg { max-width:100%; height:auto; }
+  .walk-label { font-size:11px; font-weight:800; color:#2F5277; text-align:left; margin-bottom:4px; }
+  .algo-q + .algo-q { margin-top:18px; padding-top:14px; border-top:2px dashed #EADFD2; }
+  .algo-warm { background:#F3FBF8; border-color:#9DD9D2; }
+  .algo-own { border-color:#C8B6FF; }
+  .algo-upside { margin-top:6px; text-align:right; }
+  .algo-upside span { display:inline-block; transform:rotate(180deg); font-size:10.5px; line-height:1.35; color:#8a7f75; max-width:90%; text-align:left; }
+  .walk-step { display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); gap:12px; align-items:center;
+               background:#fff; border:1px solid #EADFD2; border-radius:12px; padding:6px 12px; margin-bottom:7px; }
+  .walk-step .viz { margin:0; }
+  .walk-n { display:inline-block; width:20px; height:20px; border-radius:50%; background:#FFF5D9; border:1px solid #D6A53C;
+            color:#7D5B21; font-weight:800; font-size:11px; text-align:center; line-height:20px; margin-right:6px; }
+  .walk-say { font-size:12.5px; line-height:1.45; color:#3c3c3c; }
+  .walk-look { margin-top:6px; font-size:11.5px; line-height:1.35; color:#2B665E; background:#EFFFF7; border-radius:6px; padding:3px 7px; }
+  .algo-walk-title { font-size:12.5px; font-weight:800; color:#5a4a3a; margin-top:6px; }
+  .algo-tip { font-size:12px; color:#2B665E; background:#EFFFF7; border-radius:8px; padding:6px 10px; margin-top:6px; }
+  .algo-sketch { margin-top:4px; }
   .algo-card { padding:10px 14px; margin-bottom:9px; }
   .algo-problem { font-size:12.5px; font-weight:700; color:#3c3c3c; line-height:1.4; margin-bottom:4px; }
   .algo-steps { margin:3px 0 6px 18px; padding:0; font-size:12px; line-height:1.38; color:#444; }
   .algo-steps li { margin-bottom:1px; }
   .algo-why { font-size:12px; line-height:1.4; color:#4a4a4a; background:#F7F4FF; border-left:3px solid #C8B6FF; padding:6px 10px; border-radius:6px; }
+  .checkin-row { margin-top:8px; }
+  .checkin-label { font-size:13px; font-weight:700; color:#5a4a3a; margin-bottom:2px; }
+  .energy-scale { display:flex; align-items:center; gap:10px; margin:6px 0 4px; }
+  .energy-dot { width:28px; height:28px; border:2px solid #E6D5C4; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#8a7a6a; }
   .offline-card { border:2px dashed #8FB8DE; border-radius:16px; background:#F2F8FF; padding:12px 14px; margin-bottom:10px; }
   .offline-headline { font-size:18px; font-weight:800; color:#2F5277; margin-bottom:4px; }
   .evening-dog { border:2px dashed #C8A0E0; border-radius:16px; background:#F9F2FF; padding:12px 14px; margin-bottom:10px; }
@@ -1765,7 +1877,10 @@ STYLES = """
       break-before: auto !important;
     }
     .page:last-child { page-break-after: auto !important; break-after: auto !important; }
-    .page.flow { height: auto !important; min-height: 10.5in !important; overflow: visible !important; }
+    .page.flow { height: auto !important; min-height: 10.3in !important; overflow: visible !important; box-sizing: border-box !important; }
+    .page.flow .frame { min-height: 0 !important; display: block !important; }
+    .page.flow { padding-bottom: 0 !important; }
+    .page.flow .cycle-card { page-break-inside: auto !important; break-inside: auto !important; }
 
     .frame { min-height: 9.86in !important; height: auto !important; max-height: none !important; overflow: visible !important; display: flex !important; flex-direction: column !important; }
 
@@ -1775,7 +1890,7 @@ STYLES = """
     .cycle-card, .cycle-block, .cycle-alert, .cycle-emotional,
     .dog-block, .morning-checklist, .one-thing-box, .brain-dump-box,
     .stretch-card, .exercise-card, .dinner-card,
-    .admin-card, .parking-card, .offline-card, .algo-card, .prompt-card, .lc-card, .evening-dog,
+    .admin-card, .parking-card, .offline-card, .algo-card, .algo-intro, .walk-step, .prompt-card, .lc-card, .hz-card, .evening-dog,
     .vocab-card, .check-card, .dialogue-card, .gloss-card,
     .doodle-cloud, .sticker-slot {
       page-break-inside: avoid !important;
@@ -1849,9 +1964,13 @@ def build_html(wb: dict) -> str:
     def section_title(label, title, bubble):
         return f'<div class="section-head"><div class="section-label">{esc(label)}</div><div class="section-title">{esc(title)} <span class="bubble">{esc(bubble)}</span></div></div>'
 
+    def ms_grid(rows):
+        if hanzi:
+            return hanzi.manuscript(rows, 13, 0.48)
+        return blank_lines(rows * 2, "#d7e0ef", 26)
+
     def vocab_card(v):
-        boxes = "".join('<div class="trace-box mini"></div>' for _ in range(4))
-        return f'<div class="vocab-card"><div class="vocab-char">{esc(v.get("char",""))}</div><div class="vocab-pinyin">{esc(v.get("pinyin",""))}</div><div class="vocab-meaning">{esc(v.get("meaning",""))}</div><div class="trace-row">{boxes}</div></div>'
+        return f'<div class="vocab-card"><div class="vocab-char">{esc(v.get("char",""))}</div><div class="vocab-pinyin">{esc(v.get("pinyin",""))}</div><div class="vocab-meaning">{esc(v.get("meaning",""))}</div></div>'
 
     def doodle_cloud(text):
         return f'<div class="doodle-cloud"><div class="doodle-cloud-text">{esc(text)}</div></div>'
@@ -1904,6 +2023,7 @@ def build_html(wb: dict) -> str:
         "</head><body>",
     ]
 
+    parts.append("<!--SECTION:cover-->")
     # ── PAGE 1: Cover + Morning ───────────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
@@ -1920,18 +2040,18 @@ def build_html(wb: dict) -> str:
     <div style="font-size:11px;color:#E56D5C;margin-top:4px;">Write it here first. Everything else is bonus.</div>
   </div>
 
-  <div class="dog-block">
-    <div class="dog-block-title">🐾 Dog morning care — non-negotiable</div>
-    {checkbox_item("Give morning meds with food","Don't skip — he needs these daily","#FFAB76","#FFF5EC")}
-    {checkbox_item("Morning walk","Good boy time","#FFAB76","#FFF5EC")}
-    {checkbox_item("Top up food + fresh water","","#FFAB76","#FFF5EC")}
-  </div>
-
   <div class="morning-checklist">
     <div class="morning-checklist-title">☀️ Your morning care — while meds kick in</div>
     {checkbox_item("Take ADHD medication","Right when you wake up","#B5D8A8","#F3FFF0")}
     {checkbox_item("Eat breakfast","Protein if possible — don't skip on busy days","#B5D8A8","#F3FFF0")}
     {checkbox_item("Drink a glass of water","","#B5D8A8","#F3FFF0")}
+  </div>
+
+  <div class="dog-block">
+    <div class="dog-block-title">🐾 Dog morning care — non-negotiable</div>
+    {checkbox_item("Give morning meds with food","Don't skip — he needs these daily","#FFAB76","#FFF5EC")}
+    {checkbox_item("Morning walk","Good boy time","#FFAB76","#FFF5EC")}
+    {checkbox_item("Top up food + fresh water","","#FFAB76","#FFF5EC")}
   </div>
   <div style="flex:1"></div>
 </div></div>
@@ -1947,72 +2067,180 @@ def build_html(wb: dict) -> str:
   <div class="brain-dump-box">
     <div class="brain-dump-title">🧠 Brain dump — clear the tabs</div>
     <div class="brain-dump-sub">Dump everything rattling around in your head before you start. Worries, ideas, to-dos, random thoughts — get it out of your brain and onto paper.</div>
-    {''.join('<div class="brain-dump-line"></div>' for _ in range(12))}
+    {''.join('<div class="brain-dump-line"></div>' for _ in range(9))}
   </div>
 
-  <div class="hero-card">
-    <div class="mini-title">Welcome</div>
-    <div class="footer-note">{esc(cover["welcome"])}</div>
-    <div class="footer-note" style="margin-top:8px;">{esc(cover["pep_talk"])}</div>
-  </div>
-
-  <div class="split">
-    <div class="card">
-      <div class="mini-title">Today's big focus</div>
-      <div class="cover-focus">{esc(cover["today_big_focus"])}</div>
-      <div>{focus_chips}</div>
+  <div class="card">
+    <div class="mini-title">☕ Morning check-in</div>
+    <div class="checkin-row"><div class="checkin-label">How am I feeling?</div>{blank_lines(2)}</div>
+    <div class="checkin-row"><div class="checkin-label">Energy</div>
+      <div class="energy-scale">{"".join(f'<span class="energy-dot">{i}</span>' for i in range(1, 6))}<span class="mini-note" style="margin-left:8px;">circle one</span></div>
     </div>
-    <div class="card">
-      <div class="mini-title">Morning check-in</div>
-      <div class="split-3">
-        <div class="tiny-blank"><div class="mini-note">Feeling?</div></div>
-        <div class="tiny-blank"><div class="mini-note">Top goal?</div></div>
-        <div class="tiny-blank"><div class="mini-note">Energy?</div></div>
-      </div>
-    </div>
+    <div class="checkin-row"><div class="checkin-label">What's my top goal today, and what might get in the way?</div>{blank_lines(3)}</div>
   </div>
   <div style="flex:1"></div>
 </div></div>
 """)
 
-    # ── PAGE 2: CS311 worked problems + your turn ────────────────────────────
-    if algo:
-        algo_sub = f'{algo.get("chapter","")} · {algo.get("lectures","")} · Kleinberg & Tardos'
-        worked_html = ""
-        for n, prob in enumerate(algo.get("worked", []), 1):
+    parts.append("<!--SECTION:cs311-->")
+    # ── CS311: topic intro, worked problems with pictures, your turn ─────────
+    def viz(spec):
+        if not spec or not cs311_visuals:
+            return ""
+        try:
+            return f'<div class="viz">{cs311_visuals.render(spec)}</div>'
+        except Exception as e:  # a bad spec shouldn't sink the whole workbook
+            print(f"⚠ CS311 diagram skipped: {e}")
+            return ""
+
+    def viz_walk(frames):
+        if not frames or not cs311_visuals:
+            return ""
+        try:
+            return f'<div class="viz walk"><div class="walk-label">Watch it happen</div>{cs311_visuals.render_walkthrough(frames)}</div>'
+        except Exception as e:
+            print(f"⚠ CS311 walkthrough skipped: {e}")
+            return ""
+
+    def upside(label, text):
+        """Printed upside down: turn the page to check, so it's not read by accident."""
+        if not text:
+            return ""
+        return f'<div class="algo-upside"><span><b>{esc(label)}:</b> {esc(text)}</span></div>'
+
+    def walk_html(prob):
+        """The worked problem, one small step per row: picture on the left, words on the right."""
+        walk = prob.get("walk") or []
+        if not walk:  # older entries: a strip of frames + a text list of steps
             steps = "".join(f"<li>{esc(st)}</li>" for st in prob.get("steps", []))
-            worked_html += f"""
-  <div class="card algo-card">
-    <div class="mini-title">Worked problem {n}: {esc(prob.get("title",""))}</div>
-    <div class="algo-problem">{esc(prob.get("problem",""))}</div>
-    <ol class="algo-steps">{steps}</ol>
-    <div class="algo-why"><b>Why it works.</b> {esc(prob.get("why",""))}</div>
+            return f"""{viz_walk(prob.get("walkthrough"))}
+  <div class="card algo-card"><div class="algo-walk-title">Let's walk through it</div><ol class="algo-steps">{steps}</ol></div>"""
+        rows = ""
+        for j, st in enumerate(walk, 1):
+            look = f'<div class="walk-look">👀 {esc(st["look"])}</div>' if st.get("look") else ""
+            rows += f"""
+  <div class="walk-step">
+    <div class="walk-pic">{viz(st.get("visual"))}</div>
+    <div class="walk-text"><span class="walk-n">{j}</span><span class="walk-say">{esc(st.get("say",""))}</span>{look}</div>
   </div>"""
-        practice_html = ""
-        for n, prob in enumerate(algo.get("practice", []), 1):
-            practice_html += f"""
-  <div class="card algo-card">
-    <div class="mini-title">Your turn {n}</div>
-    <div class="algo-problem">{esc(prob.get("problem",""))}</div>
-    <div style="margin-top:6px;">{blank_lines(4)}</div>
-  </div>"""
-        parts.append(f"""
-<div class="page flow"><div class="frame">
-  {section_title("cs311 algorithms", algo.get("topic","Algorithms"), "worked examples")}
-  <div class="footer-note" style="margin-bottom:10px;">{esc(algo_sub)}. Read each one slowly, then cover the steps and redo it yourself.</div>
-  {worked_html}
-  <div style="flex:1"></div>
-</div></div>
-""")
-        parts.append(f"""
-<div class="page flow"><div class="frame">
-  {section_title("cs311 algorithms", "Your Turn: " + algo.get("topic","Algorithms"), "no peeking")}
-  <div class="footer-note" style="margin-bottom:10px;">Same ideas as the worked problems. The answer key is on the last page.</div>
-  {practice_html}
-  <div style="flex:1"></div>
-</div></div>
-""")
+        return rows
 
+    def practice_card(pr, label, extra=""):
+        picture = viz(pr.get("visual"))
+        return f"""
+  <div class="card algo-card algo-own">
+    <div class="algo-num">{label}</div>{extra}
+    <div class="algo-problem">{esc(pr.get("problem",""))}</div>
+    {picture}
+    <div class="algo-sketch"><span class="mini-note">{"Mark up the picture, then explain your answer." if picture else "Sketch it first, then write your answer."}</span>{blank_lines(5)}</div>
+    {upside("Hint (only if you're stuck)", pr.get("hint"))}
+  </div>"""
+
+    def cs311_page(q, track, show_intro=True):
+        """One CS311 question: warm-up, a picture-by-picture walkthrough, then one on your own."""
+        intro = (q.get("intro") or {}) if show_intro else {}
+        topic = q.get("topic", "Algorithms")
+        full_intro = track == "course" and q.get("question_number") == 1
+        intro_html = ""
+        if intro and full_intro:
+            signals = "".join(chip(x, "#F7F4FF", "#C8B6FF", "#5D4D85") for x in intro.get("you_know_it_when", []))
+            intro_html = f"""
+  <div class="card algo-intro">
+    <div class="algo-bigidea"><span class="algo-kicker">The big idea</span>{esc(intro.get("big_idea",""))}</div>
+    <div class="algo-picture"><span class="algo-kicker">Picture this</span>{esc(intro.get("picture_this",""))}</div>
+    {viz(intro.get("visual"))}
+    <div class="algo-signals"><span class="algo-kicker">You know it's this topic when…</span><div>{signals}</div></div>
+  </div>
+  <div class="card algo-card">
+    <div class="mini-title">🧠 What do you remember?</div>
+    <div class="footer-note">Before reading on: what do you already remember about {esc(topic)} from lecture or the book? A word, a picture, a half-remembered rule all count.</div>
+    {blank_lines(3)}
+  </div>"""
+        elif intro:
+            intro_html = f"""
+  <div class="card algo-intro">
+    <div class="algo-bigidea"><span class="algo-kicker">{"Reminder: the big idea" if track == "course" else "The big idea"}</span>{esc(intro.get("big_idea",""))}</div>
+  </div>"""
+        prob = q.get("worked") or {}
+        warm = prob.get("warmup") or {}
+        warm_html = ""
+        if warm:
+            warm_html = f"""
+  <div class="card algo-card algo-warm">
+    <div class="algo-num">① Warm-up · about a minute</div>
+    <div class="algo-problem">{esc(warm.get("question",""))}</div>
+    {viz(warm.get("visual"))}
+    {blank_lines(2)}
+    {upside("Answer", warm.get("answer"))}
+  </div>"""
+        tip = f'<div class="algo-tip">💡 {esc(prob["tip"])}</div>' if prob.get("tip") else ""
+        worked_html = f"""
+  <div class="card algo-card">
+    <div class="algo-num">{"② " if warm else ""}Walk through it together</div>
+    <div class="mini-title">{esc(prob.get("title",""))}</div>
+    <div class="algo-problem">{esc(prob.get("problem",""))}</div>
+    {viz(prob.get("visual"))}
+  </div>
+  {walk_html(prob)}
+  <div class="card algo-card">
+    <div class="algo-why"><b>Why it works.</b> {esc(prob.get("why",""))}</div>
+    {tip}
+  </div>"""
+        practice_html = practice_card(q.get("practice") or {}, f'{"③ " if warm else ""}On your own · no peeking')
+        qpos = f'Q{q.get("question_number","")} of {q.get("question_count","")}'
+        if track == "course":
+            kicker = "cs311 · course order"
+            stamp = f'topic {q.get("topic_number","")}/{q.get("topic_count","")} · {qpos}'
+            note = "Warm up, follow the pictures step by step, then do the matching one on your own. Answers are on the last page."
+        else:
+            kicker = "cs311 · random pick"
+            stamp = "random pick"
+            note = "A question from anywhere in the course, to keep things fresh. Same three steps; answers are on the last page."
+        sub = f'{q.get("chapter","")} · {q.get("lectures","")} · {qpos} · Kleinberg & Tardos'
+        # No page wrapper: questions flow one after another (see below), so a short
+        # question doesn't leave half a printed page empty.
+        return f"""
+  <div class="algo-q">
+  {section_title(kicker, topic, stamp)}
+  <div class="footer-note" style="margin-bottom:10px;">{esc(sub)}. {esc(note)}</div>
+  {intro_html}
+  {warm_html}
+  {worked_html}
+  {practice_html}
+  </div>
+"""
+
+    def review_page(reviews):
+        cards = ""
+        for r in reviews:
+            try:
+                when = datetime.strptime(r.get("from_date", ""), "%Y-%m-%d").strftime("%a %b %-d")
+            except ValueError:
+                when = r.get("from_date", "")
+            extra = f'<div class="footer-note">{esc(r.get("topic",""))} Q{r.get("question_number","")} · you did this on {esc(when)}</div>'
+            cards += practice_card(r.get("practice") or {}, "Redo it cold", extra)
+        return f"""
+<div class="page flow"><div class="frame">
+  {section_title("cs311 · spaced review", "Can you still do it?", f"{len(reviews)} from earlier days")}
+  <div class="footer-note" style="margin-bottom:10px;">Questions you already did. Try them without looking back at that day's pages: pulling it out of memory is what makes it stick. Answers are on the last page.</div>
+  {cards}
+</div></div>
+"""
+
+    seen_topics = set()
+    questions = []
+    for q in algo.get("course_order") or []:
+        # Intro once per topic per day; later questions on the same topic skip it.
+        questions.append(cs311_page(q, "course", show_intro=q.get("topic") not in seen_topics))
+        seen_topics.add(q.get("topic"))
+    if algo.get("random"):
+        questions.append(cs311_page(algo["random"], "random"))
+    if questions:
+        parts.append(f'<div class="page flow"><div class="frame">{"".join(questions)}</div></div>')
+    if algo.get("review"):
+        parts.append(review_page(algo["review"]))
+
+    parts.append("<!--SECTION:leetcode-->")
     # ── LeetCode: worksheet (UMPIRE) ─────────────────────────────────────────
     lc = wb.get("_leetcode") or {}
     if lc:
@@ -2041,16 +2269,25 @@ def build_html(wb: dict) -> str:
   {intro}
   <div class="card lc-card">
     <div class="lc-statement">{esc(lp["statement"])}</div>
-    {ex_html}
+    <div class="lc-ex-grid">{ex_html}</div>
     <div class="footer-note" style="margin-top:6px;"><b>Constraints:</b> {esc(lp["constraints"])}</div>
   </div>
   <div class="card lc-card lc-howto">
-    <b>How to work it:</b> start a {lc["minutes"]}-minute timer and go through U-M-P-I-R-E on paper.
-    Stuck when the timer ends? Read <b>one</b> hint on the LeetCode answer page, then try 5 more minutes before the next.
-    Submit it online at leetcode.com/problems/{esc(lp["slug"])} during your online hour.
+    <b>How to work it:</b> start a {lc["minutes"]}-minute timer and work through the six UMPIRE steps below on paper.
+    UMPIRE is a problem-solving checklist from CodePath; it keeps you from jumping straight into code.
+    <div class="umpire-key">
+      <div><span class="lc-letter sm">U</span><b>Understand</b>: say it in your words, find edge cases</div>
+      <div><span class="lc-letter sm">M</span><b>Match</b>: which pattern does it look like?</div>
+      <div><span class="lc-letter sm">P</span><b>Plan</b>: steps in plain words, before code</div>
+      <div><span class="lc-letter sm">I</span><b>Implement</b>: write the code</div>
+      <div><span class="lc-letter sm">R</span><b>Review</b>: trace an example by hand to catch bugs</div>
+      <div><span class="lc-letter sm">E</span><b>Evaluate</b>: time and space; could it be better?</div>
+    </div>
+    Stuck when the timer ends? Read <b>one</b> hint on the LeetCode answer page, then try 5 more minutes.
+    Submit at leetcode.com/problems/{esc(lp["slug"])} during your online hour.
   </div>
-  {step("U", "Understand", "Restate the problem in your own words. Write two edge cases (empty? one item? duplicates? negatives?).", 3)}
-    {step("M", "Match", "Which pattern fits, and what in the problem told you?", 2)}
+  {step("U", "Understand", "Restate the problem in your own words. Write two edge cases (empty? one item? duplicates? negatives?).", 2 if lc.get("new_pattern") else 3)}
+  {step("M", "Match", "Which pattern fits, and what in the problem told you?", 2)}
   <div style="flex:1"></div>
 </div></div>
 """)
@@ -2076,6 +2313,7 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:chores-->")
     # ── PAGE 3: Chores ────────────────────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
@@ -2103,6 +2341,7 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:body-->")
     # ── PAGE 4: Body + Parking ────────────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
@@ -2127,6 +2366,7 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:offline-->")
     # ── PAGE 5: Offline today ─────────────────────────────────────────────────
     offline = wb.get("_offline") or {}
     if offline:
@@ -2138,7 +2378,6 @@ def build_html(wb: dict) -> str:
             sub = "Outside that hour, write it on the list instead of looking it up."
         online_items = "".join(checkbox_item(i, "", "#8FB8DE", "#F2F8FF") for i in offline.get("online_list", []))
         toolkit_chips = "".join(chip(t, "#F2F8FF", "#8FB8DE", "#2F5277") for t in offline.get("toolkit", []))
-        exception_chips = "".join(chip(e, "#F9F9F9", "#C8C8C8", "#555") for e in offline.get("exceptions", []))
         parts.append(f"""
 <div class="page"><div class="frame">
   {section_title("offline", "Offline Today", "phone down")}
@@ -2155,15 +2394,9 @@ def build_html(wb: dict) -> str:
     {blank_lines(6, "#B9D3EC")}
   </div>
 
-  <div class="split">
-    <div class="offline-card">
-      <div class="mini-title">🧰 Reach for these instead</div>
-      <div>{toolkit_chips}</div>
-    </div>
-    <div class="offline-card">
-      <div class="mini-title">✅ Okay to go online for</div>
-      <div>{exception_chips}</div>
-    </div>
+  <div class="offline-card">
+    <div class="mini-title">🧰 Reach for these instead</div>
+    <div>{toolkit_chips}</div>
   </div>
 
   <div class="offline-card">
@@ -2179,6 +2412,7 @@ def build_html(wb: dict) -> str:
 
 
 
+    parts.append("<!--SECTION:reading-->")
     # ── Reading: today's saved Substack article + reflection ─────────────────
     art = wb.get("_reading") or {}
     if art:
@@ -2221,7 +2455,10 @@ def build_html(wb: dict) -> str:
                     f'<div class="prompt-text">{n}. {esc(pr["text"])}</div>'
                     f'<div class="prompt-follow">{esc(pr.get("follow",""))}</div>{blank_lines(lines)}</div>')
         prs = art.get("prompts", [])
-        first = "".join(prompt_card(n, pr, 4) for n, pr in enumerate(prs[:3], 1))
+        # Long model-written prompts take more room; drop a writing line so the
+        # first three still fit on one sheet.
+        first_lines = 4 if sum(len(pr["text"]) for pr in prs[:3]) <= 420 else 3
+        first = "".join(prompt_card(n, pr, first_lines) for n, pr in enumerate(prs[:3], 1))
         second = "".join(prompt_card(n, pr, 6) for n, pr in enumerate(prs[3:], 4))
         parts.append(f"""
 <div class="page flow"><div class="frame">
@@ -2243,6 +2480,7 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:weather-->")
     # ── Weather page ──────────────────────────────────────────────────────────
     wx_avail   = weather_data.get("available", False)
     wx_today   = weather_data.get("today", {})
@@ -2371,7 +2609,11 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:moon-->")
     # ── PAGE 4: Moon ──────────────────────────────────────────────────────────────
+    def _when(days):
+        n = round(days)
+        return "today" if n <= 0 else "tomorrow" if n == 1 else f"in {n} days"
     moon_phase_name  = moon_data.get("phase_name", "Unknown Phase")
     moon_emoji       = moon_data.get("emoji", "🌕")
     moon_illum       = moon_data.get("illumination_pct", 0)
@@ -2411,7 +2653,7 @@ def build_html(wb: dict) -> str:
     elif moon_soon:
         full_moon_alert_html = f'''
         <div class="full-moon-alert">
-          <div class="full-moon-alert-title">🌔 {esc(moon_data.get("full_moon_name","Full Moon"))} in {moon_days_full:.0f} day(s) — {esc(moon_full_date)}</div>
+          <div class="full-moon-alert-title">🌔 {esc(moon_data.get("full_moon_name","Full Moon"))} {_when(moon_days_full)} — {esc(moon_full_date)}</div>
           <div class="full-moon-alert-text">{esc(moon_full_lore)}</div>
           {f'<div class="full-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_full_msg)}</div>' if mp_full_msg else ""}
         </div>'''
@@ -2422,25 +2664,25 @@ def build_html(wb: dict) -> str:
         <div class="new-moon-alert">
           <div class="new-moon-alert-title">🌑 Tonight is the New Moon — set your intentions</div>
           <div class="new-moon-alert-text">{esc(moon_new_lore)}</div>
-          {f'<div class="new-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_new_msg)}</div>' if mp_new_msg else ""}
+          {f'<div class="new-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_new_msg)}</div>' if mp_new_msg and moon_new_lore[:40] not in mp_new_msg else ""}
         </div>'''
     elif moon_new_soon:
         new_moon_alert_html = f'''
         <div class="new-moon-alert">
-          <div class="new-moon-alert-title">🌘 New Moon arriving in {moon_days_new:.0f} day(s) — {esc(moon_new_date)}</div>
+          <div class="new-moon-alert-title">🌘 New Moon {_when(moon_days_new)} — {esc(moon_new_date)}</div>
           <div class="new-moon-alert-text">{esc(moon_new_lore)}</div>
-          {f'<div class="new-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_new_msg)}</div>' if mp_new_msg else ""}
+          {f'<div class="new-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_new_msg)}</div>' if mp_new_msg and moon_new_lore[:40] not in mp_new_msg else ""}
         </div>'''
 
     next_full_note = ""
     if not moon_is_full and not moon_soon and not moon_is_new and not moon_new_soon:
         days_note_parts = []
         days_note_parts.append(f'Next full moon: <strong style="color:#c8b8e8;">{esc(moon_full_label)}</strong> — {moon_days_full:.0f} days away')
-        days_note_parts.append(f'Next new moon: <strong style="color:#c8b8e8;">{esc(moon_new_date)}</strong> — {moon_days_new:.0f} days away')
+        days_note_parts.append(f'Next new moon: <strong style="color:#c8b8e8;">{esc(moon_new_date)}</strong> — {_when(moon_days_new)}')
         next_full_note = f'<div class="moon-text" style="margin-top:8px;color:#7b6fa8;">{" · ".join(days_note_parts)}</div>'
 
     parts.append(f"""
-<div class="page"><div class="frame">
+<div class="page flow"><div class="frame">
   {section_title("tonight\'s sky", "Moon phase", "celestial check-in")}
 
   <div class="moon-card">
@@ -2472,7 +2714,7 @@ def build_html(wb: dict) -> str:
       <div class="moon-reflection-q">✦ {esc(mp_reflect_q)}</div>
     </div>
     <div style="margin-top:10px;">
-      {''.join('<div class="moon-write-line"></div>' for _ in range(6))}
+      {''.join('<div class="moon-write-line"></div>' for _ in range(5))}
     </div>
   </div>
   <div style="flex:1"></div>
@@ -2480,6 +2722,7 @@ def build_html(wb: dict) -> str:
 """)
 
 
+    parts.append("<!--SECTION:cycle-->")
     # ── Cycle page (inserted after moon page) ────────────────────────────────
     cycle_avail      = cycle_data.get("available", False)
     cycle_phase      = cycle_data.get("phase", {})
@@ -2522,12 +2765,12 @@ def build_html(wb: dict) -> str:
         alerts_html = ""
         if period_soon:
             alerts_html += f'''<div class="cycle-alert" style="border-color:#C8697A;">
-              <div class="cycle-alert-title" style="color:#C8697A;">🌹 Period arriving in {days_to_period} day(s)</div>
+              <div class="cycle-alert-title" style="color:#C8697A;">🌹 Period arriving {_when(days_to_period)}</div>
               <div class="cycle-alert-text">Stock up on comfort supplies. Be extra gentle with your expectations over the next few days.</div>
             </div>'''
         if ovul_soon:
             alerts_html += f'''<div class="cycle-alert" style="border-color:#FFD166;">
-              <div class="cycle-alert-title" style="color:#FFD166;">☀️ Ovulation window in {days_to_ovul} day(s)</div>
+              <div class="cycle-alert-title" style="color:#FFD166;">☀️ Ovulation window {_when(days_to_ovul)}</div>
               <div class="cycle-alert-text">Your peak energy window is coming. Plan your most important tasks or social moments for then.</div>
             </div>'''
         if p_pms:
@@ -2537,7 +2780,7 @@ def build_html(wb: dict) -> str:
             </div>'''
 
         parts.append(f"""
-<div class="page"><div class="frame">
+<div class="page flow"><div class="frame">
   {section_title("inner season", "Cycle phase", "body wisdom")}
 
   <div class="cycle-card" style="background:{p_bg};color:{p_accent};">
@@ -2593,7 +2836,7 @@ def build_html(wb: dict) -> str:
     <div class="mini-title" style="color:#5d4085;">Coming up this cycle</div>
     {'<div class="footer-note">🌹 Period: arriving in ' + str(days_to_period) + ' days</div>' if days_to_period > 0 else '<div class="footer-note">🌹 Period: today or very soon</div>'}
     {'<div class="footer-note" style="margin-top:4px;">☀️ Ovulation window: in ' + str(days_to_ovul) + ' days (day ' + str(OVULATION_DAY) + '±2)</div>' if days_to_ovul > 0 else ""}
-    <div class="footer-note" style="margin-top:8px;color:#aaa;font-size:11px;">Last period logged: {esc(cycle_data.get("last_period_start","unknown"))} · Update with: python3 dailyWorkbook.py --log-period</div>
+    <div class="footer-note" style="margin-top:8px;color:#aaa;font-size:11px;">Last period logged: {esc(cycle_data.get("last_period_start","unknown"))} · Update with: python3 dailyWorkbookLocal.py --log-period</div>
   </div>
   <div style="flex:1"></div>
 </div></div>
@@ -2602,13 +2845,13 @@ def build_html(wb: dict) -> str:
     else:
         # No cycle data logged yet — prompt user to set it up
         parts.append(f"""
-<div class="page"><div class="frame">
+<div class="page flow"><div class="frame">
   {section_title("inner season", "Cycle phase", "body wisdom")}
   <div class="card" style="background:#f9f3ff;border-color:#c8b6ff;text-align:center;padding:30px 20px;">
     <div style="font-size:36px;margin-bottom:12px;">🌹</div>
     <div class="mini-title" style="color:#5d4085;">Set up cycle tracking</div>
     <div class="footer-note" style="margin-bottom:16px;">Run this command when your next period starts to activate this section:</div>
-    <div style="background:#1a1a2e;color:#c8b8e8;font-family:monospace;font-size:13px;padding:12px 16px;border-radius:10px;display:inline-block;">python3 dailyWorkbook.py --log-period</div>
+    <div style="background:#1a1a2e;color:#c8b8e8;font-family:monospace;font-size:13px;padding:12px 16px;border-radius:10px;display:inline-block;">python3 dailyWorkbookLocal.py --log-period</div>
     <div class="footer-note" style="margin-top:12px;color:#aaa;">You can also log a past date: --log-period 2026-05-01</div>
   </div>
   <div style="flex:1"></div>
@@ -2616,6 +2859,7 @@ def build_html(wb: dict) -> str:
 """)
 
 
+    parts.append("<!--SECTION:chinese-->")
     # ── PAGES 5-7: Chinese ────────────────────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
@@ -2636,32 +2880,61 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    # Writing practice: stroke order + 田字格 squares for each new character
+    seen_chars, practice_cards = [], []
+    for v in chinese_lesson.get("vocab", []):
+        for ch in v.get("char", ""):
+            if "\u4e00" <= ch <= "\u9fff" and ch not in seen_chars:
+                seen_chars.append(ch)
+    for ch in seen_chars[:6]:
+        word = WORD_INDEX.get(ch) or next((w for w in chinese_lesson.get("vocab", []) if ch in w.get("char", "")), {})
+        in_word = "" if word.get("char") == ch else f' · in {esc(word.get("char",""))}'
+        n = hanzi.stroke_count(ch) if hanzi else None
+        strip = hanzi.stroke_order(ch) if hanzi else ""
+        boxes1 = "".join(hanzi.box(ch, 0.7, "trace") for _ in range(3)) + "".join(hanzi.box(None, 0.7) for _ in range(6)) if hanzi else ""
+        boxes2 = "".join(hanzi.box(None, 0.7) for _ in range(9)) if hanzi else ""
+        practice_cards.append(f'''
+  <div class="card hz-card">
+    <div class="hz-head">
+      {hanzi.box(ch, 0.95, "model") if hanzi else f'<div class="vocab-char">{esc(ch)}</div>'}
+      <div>
+        <div class="hz-title">{esc(ch)} <span class="hz-pinyin">{esc(word.get("pinyin",""))}</span></div>
+        <div class="footer-note">{esc(word.get("meaning",""))}{in_word}{f" · {n} strokes" if n else ""}</div>
+        <div class="mini-note">Stroke order: the red stroke is the new one; the circle shows where the pen starts.</div>
+      </div>
+    </div>
+    {strip}
+    <div class="tzg-row">{boxes1}</div>
+    <div class="tzg-row">{boxes2}</div>
+    <div class="tzg-row">{boxes2}</div>
+  </div>''')
+    if practice_cards:
+        parts.append(f"""
+<div class="page flow"><div class="frame">
+  {section_title("Chinese writing", "Write It: 写字", "stroke by stroke")}
+  <div class="footer-note" style="margin-bottom:8px;">Trace the gray characters first, then write on your own. Say the sound out loud each time you write it.</div>
+  {"".join(practice_cards)}
+  <div style="flex:1"></div>
+</div></div>
+""")
+
     parts.append(f"""
-<div class="page"><div class="frame">
-  <div class="split">
-    <div class="card">
-      <div class="mini-title">Character practice</div>
-      <div class="footer-note"><strong>{esc(chinese_lesson["character_practice"]["char"])}</strong> · {esc(chinese_lesson["character_practice"]["pinyin"])} · {esc(chinese_lesson["character_practice"]["meaning"])}</div>
-      <div class="mini-note">{esc(chinese_lesson["character_practice"]["stroke_hint"])}</div>
-      <div class="mini-note">Example: {esc(chinese_lesson["character_practice"]["example_word"])}</div>
-      <div style="margin-top:12px;">{char_boxes}</div>
-    </div>
-    <div class="card">
-      <div class="mini-title">Mini dialogue</div>
-      {dialogue_html}
-    </div>
+<div class="page flow"><div class="frame">
+  {section_title("Chinese lesson", "Mini dialogue", "read it aloud")}
+  <div class="card">
+    {dialogue_html}
   </div>
   <div class="card">
     <div class="mini-title">Tiny game</div>
     <div class="footer-note">{esc(chinese_lesson["tiny_game"])}</div>
-    <div style="margin-top:8px;">{blank_lines(3)}</div>
+    <div class="ms-grid">{ms_grid(2)}</div>
   </div>
   <div style="flex:1"></div>
 </div></div>
 """)
 
     parts.append(f"""
-<div class="page"><div class="frame">
+<div class="page flow"><div class="frame">
   {section_title("reference page", chinese_ref["title"], "cheat sheet")}
   <div class="card">
     <div class="mini-title">How to use this page</div>
@@ -2688,53 +2961,43 @@ def build_html(wb: dict) -> str:
 """)
 
     parts.append(f"""
-<div class="page"><div class="frame">
+<div class="page flow"><div class="frame">
   {section_title("graded reader", chinese_reader["title"], "read slowly")}
   <div class="card">
     <div class="mini-title">{esc(chinese_reader["story_title"])}</div>
     <div class="footer-note">{esc(chinese_reader["reader_intro"])}</div>
   </div>
   <div class="card">{reader_html}</div>
-  <div class="split">
-    <div class="card">
-      <div class="mini-title">Comprehension questions</div>
-      {"".join(checkbox_item(q,"","#BDE0FE","#F8FBFF") for q in chinese_reader["comprehension_questions"][:3])}
-    </div>
-    <div class="card">
-      <div class="mini-title">Copywork</div>
-      <div class="footer-note">{esc(chinese_reader["copywork_prompt"])}</div>
-      <div style="margin-top:10px;">{blank_lines(6,"#d7e0ef",22)}</div>
-    </div>
+  <div class="card">
+    <div class="mini-title">Comprehension questions</div>
+    {"".join(checkbox_item(q,"","#BDE0FE","#F8FBFF") for q in chinese_reader["comprehension_questions"][:3])}
+  </div>
+  <div class="card">
+    <div class="mini-title">Copywork 抄写</div>
+    <div class="footer-note">{esc(chinese_reader["copywork_prompt"])} One character per square, punctuation gets its own square.</div>
+    <div class="ms-grid">{ms_grid(3)}</div>
   </div>
   <div style="flex:1"></div>
 </div></div>
 """)
 
-    # ── PAGE 7: Creativity ────────────────────────────────────────────────────
-    parts.append(f"""
-<div class="page"><div class="frame">
-  {section_title("creative page", creativity["title"], "stickers & scribbles")}
-  <div class="card">
-    <div class="mini-title">Creative permission slip</div>
-    <div class="footer-note">{esc(creativity["intro"])}</div>
-    <div style="margin-top:8px;">{affirmation_chips}</div>
-  </div>
-  <div class="card">
-    <div class="mini-title">Doodle menu</div>
-    <div class="doodle-grid">{doodle_html}</div>
-  </div>
-  <div class="card">
-    <div class="mini-title">Sticker labels</div>
-    <div class="sticker-grid">{sticker_grid(creativity["sticker_labels"])}</div>
-  </div>
-  <div class="card">
-    <div class="mini-title">Coloring caption</div>
-    <div class="footer-note">{esc(creativity["coloring_caption"])}</div>
-  </div>
-  <div style="flex:1"></div>
-</div></div>
-""")
+    # ── Italian: today's quaderno day (italian.py) ───────────────────────────
+    it_pages = {}
+    if italian and wb.get("_italian"):
+        try:
+            it_pages = italian.render(wb["_italian"])
+        except Exception as e:
+            print(f"⚠ Italian pages skipped: {e}")
+    if it_pages:
+        parts.append("<!--SECTION:italian-->")
+        parts.append(it_pages.get("css", ""))
+        parts.extend(it_pages.get("lesson_pages", []))
+        if it_pages.get("answer_pages"):
+            parts.append("<!--SECTION:it_answers-->")
+            parts.append(it_pages.get("css", ""))
+            parts.extend(it_pages["answer_pages"])
 
+    parts.append("<!--SECTION:evening-->")
     # ── PAGE 8: Evening + Reflection ─────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
@@ -2783,6 +3046,7 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:back-->")
     # ── PAGE 9: Back ──────────────────────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
@@ -2808,6 +3072,7 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:lc_answers-->")
     # ── LeetCode hints + solution (near the back, so it's not in view) ───────
     if lc and (lc.get("problem") or lc.get("reviews")):
         lp = lc.get("problem")
@@ -2840,16 +3105,22 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:cs311_answers-->")
     # ── Answer key (last page, so it's easy to fold back) ────────────────────
-    if algo and algo.get("practice"):
+    algo_qs = ([("Course order", q) for q in (algo.get("course_order") or [])]
+               + ([("Random pick", algo["random"])] if algo.get("random") else [])
+               + [("Review", q) for q in (algo.get("review") or [])])
+    algo_qs = [(label, q) for label, q in algo_qs if q.get("practice")]
+    if algo_qs:
         answers_html = "".join(
-            f'<div class="card algo-card"><div class="mini-title">Your turn {n}</div>'
-            f'<div class="algo-problem" style="color:#888;">{esc(pr.get("problem",""))}</div>'
-            f'<div class="algo-why"><b>Answer.</b> {esc(pr.get("answer",""))}</div></div>'
-            for n, pr in enumerate(algo["practice"], 1))
+            f'<div class="card algo-card"><div class="mini-title">{label}: {esc(q.get("topic",""))} '
+            f'Q{q.get("question_number","")}</div>'
+            f'<div class="algo-problem" style="color:#888;">{esc(q["practice"].get("problem",""))}</div>'
+            f'<div class="algo-why"><b>Answer.</b> {esc(q["practice"].get("answer",""))}</div></div>'
+            for label, q in algo_qs)
         parts.append(f"""
 <div class="page flow"><div class="frame">
-  {section_title("answer key", "CS311 Answers: " + algo.get("topic",""), "check yourself")}
+  {section_title("answer key", "CS311 Answers", "check yourself")}
   {answers_html}
   <div class="card">
     <div class="mini-title">Checkpoint</div>
@@ -2860,8 +3131,37 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    parts.append("<!--SECTION:end-->")
     parts.append("</body></html>")
-    return "\n".join(parts)
+    return "\n".join(_reorder_sections(parts))
+
+
+# Order the printed sections. Gentle, outward-looking pages (weather, moon,
+# cycle) come before the brain-heavy study pages; answer keys stay at the back.
+SECTION_ORDER = [
+    "cover", "weather", "moon", "cycle",
+    "cs311", "leetcode",
+    "chores", "body", "offline",
+    "reading", "chinese", "italian",
+    "evening", "back",
+    "lc_answers", "cs311_answers", "it_answers",
+]
+
+
+def _reorder_sections(parts: list[str]) -> list[str]:
+    """Split build_html's parts at <!--SECTION:name--> tags and reassemble them in SECTION_ORDER."""
+    import re
+    head, sections, current = [], {}, None
+    for part in parts:
+        m = re.fullmatch(r"<!--SECTION:(\w+)-->", part)
+        if m:
+            current = m.group(1)
+            sections.setdefault(current, [])
+            continue
+        (sections[current] if current else head).append(part)
+    tail = sections.pop("end", [])
+    ordered = [n for n in SECTION_ORDER if n in sections] + [n for n in sections if n not in SECTION_ORDER]
+    return head + [x for n in ordered for x in sections[n]] + tail
 
 
 # ── Save / export / email ─────────────────────────────────────────────────────
@@ -2933,6 +3233,17 @@ def main():
         log_period_start(date_arg)
         return
 
+    # --date YYYY-MM-DD builds the workbook for that day (used by print_batch.py)
+    global WORKBOOK_DATE
+    if "--date" in sys.argv:
+        idx = sys.argv.index("--date")
+        try:
+            WORKBOOK_DATE = datetime.strptime(sys.argv[idx + 1], "%Y-%m-%d").date()
+        except (IndexError, ValueError):
+            print("✗ --date needs a date like 2026-11-10"); return 1
+    # --no-open: don't open Preview, and exit non-zero if no PDF was made
+    no_open = "--no-open" in sys.argv
+
     print(f"\n🖍  Daily Workbook Generator — Whimsical Edition")
     print(f"   {today_label()}\n")
 
@@ -2940,7 +3251,7 @@ def main():
         wb = generate_workbook_content()
         print("✓ Content generated")
     except Exception as e:
-        print(f"✗ Generation failed: {e}"); traceback.print_exc(); return
+        print(f"✗ Generation failed: {e}"); traceback.print_exc(); return 1
 
     try:
         update_hsk_progress(
@@ -2956,10 +3267,11 @@ def main():
         html_path = save_workbook_html(wb)
         print(f"✓ HTML saved: {html_path}")
     except Exception as e:
-        print(f"✗ Save failed: {e}"); traceback.print_exc(); return
+        print(f"✗ Save failed: {e}"); traceback.print_exc(); return 1
 
-    # Convert HTML to PDF using pdfkit (wkhtmltopdf)
+    # Convert HTML to PDF: pdfkit (wkhtmltopdf) if installed, else headless Chrome
     pdf_path = html_path.with_suffix(".pdf")
+    pdf_path.unlink(missing_ok=True)  # never mistake an old PDF for a new one
     try:
         print("⏳ Generating PDF...")
         import pdfkit
@@ -2976,19 +3288,23 @@ def main():
             'dpi': '300',
         }
         pdfkit.from_file(str(html_path), str(pdf_path), options=options)
-        if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            print(f"✓ PDF saved: {pdf_path}")
+    except Exception as e:
+        print(f"⚠ pdfkit unavailable or failed ({e}) — trying headless Chrome")
+        export_pdf(html_path)
+
+    if pdf_path.exists() and pdf_path.stat().st_size > 0:
+        print(f"✓ PDF saved: {pdf_path}")
+        if not no_open:
             subprocess.run(["open", str(pdf_path)])
             print(f"✓ Opened in Preview — ready to print")
-        else:
-            print("⚠ PDF not created — opening HTML instead")
-            subprocess.run(["open", str(html_path)])
-    except Exception as e:
-        print(f"⚠ PDF generation failed: {e} — opening HTML instead")
+    else:
+        print("⚠ PDF not created" + ("" if no_open else " — opening HTML instead"))
+        if no_open: return 1
         subprocess.run(["open", str(html_path)])
 
     print(f"\n✅ Done! Saved to:\n   {html_path}\n   {pdf_path}\n")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

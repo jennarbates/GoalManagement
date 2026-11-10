@@ -98,10 +98,12 @@ def get_workbook_tasks() -> list:
     weekday = datetime.now().weekday()
     weekly_task, _, weekly_time = CHORE_SCHEDULE[weekday]
 
-    tasks = [
-        {"section": "CERT",  "text": f"CS311: {algo['topic']}",
-         "note": "Read 3 worked problems, do 3 on your own", "source": "cs311"},
-    ]
+    tasks = []
+    if algo["course_order"]:
+        topics = list(dict.fromkeys(q["topic"] for q in algo["course_order"]))
+        n = len(algo["course_order"]) + (1 if algo["random"] else 0)
+        tasks.append({"section": "CERT", "text": f"CS311: {' + '.join(topics)}",
+                      "note": f"{n} questions + {len(algo['review'])} review", "source": "cs311"})
     lc = leetcode.daily_set(mark=False)  # the workbook records progress, not the receipt
     if lc["problem"]:
         p = lc["problem"]

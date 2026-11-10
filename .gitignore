@@ -13,3 +13,10 @@ __pycache__/
 # Downloaded Substack articles (other people's writing) and reading history
 daily-workbook/reading/
 daily-workbook/reading_progress.json
+daily-workbook/workbooks/debug_*.txt
+# Stroke data, downloaded by hanzi.py fetch (Arphic Public License)
+daily-workbook/hanzi_data/
+
+# Print files built ahead for the ESP32 (print_batch.py)
+daily-workbook/workbooks/print_queue/
+daily-workbook/workbooks/*.log
