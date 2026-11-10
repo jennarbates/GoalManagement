@@ -1913,6 +1913,25 @@ STYLES = """
 """
 
 
+def page_footer_label() -> str:
+    """Short date stamped next to each page number, e.g. 'Tue Nov 10'."""
+    now = wb_now()
+    return f"{now:%a %b} {now.day}"
+
+
+def page_number_style() -> str:
+    """Stamp 'Tue Nov 10 · 3 / 54' in the bottom margin of every printed sheet.
+
+    Uses @page margin boxes, so it numbers physical sheets — including the
+    extra sheets that .flow pages (articles, worked problems) spill onto — and
+    the date keeps days apart when several are printed and bound together.
+    """
+    return ("<style>@page { @bottom-right {"
+            f" content: \"{page_footer_label()} · \" counter(page) \" / \" counter(pages);"
+            " font-family: Menlo, Monaco, monospace; font-size: 8pt; color: #8a7a6a;"
+            " vertical-align: middle; } }</style>")
+
+
 def build_html(wb: dict) -> str:
     theme      = wb["theme"]
     cover      = wb["cover"]
@@ -2009,6 +2028,7 @@ def build_html(wb: dict) -> str:
         "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>",
         f"<title>Daily Workbook — {esc(date_label)}</title>",
         STYLES,
+        page_number_style(),
         "</head><body>",
     ]
 
@@ -3269,6 +3289,10 @@ def main():
             'enable-local-file-access': '',
             'no-outline': None,
             'dpi': '300',
+            # wkhtmltopdf ignores @page margin boxes, so number pages its own way
+            'footer-right': f'{page_footer_label()} · [page] / [topage]',
+            'footer-font-size': '7',
+            'footer-spacing': '1',
         }
         pdfkit.from_file(str(html_path), str(pdf_path), options=options)
     except Exception as e:
