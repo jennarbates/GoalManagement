@@ -28,6 +28,7 @@ GRID_COLOR = "#F2B9B3"
 INK = "#3c3c3c"
 TRACE = "#E3E3E3"
 ACCENT = "#E56D5C"
+RADICAL = "#2B9C8E"
 
 
 def load(char: str) -> dict | None:
@@ -63,14 +64,19 @@ def _grid(size: float) -> str:
             f'<line x1="40" y1="40" x2="984" y2="984" opacity="0.45"/><line x1="984" y1="40" x2="40" y2="984" opacity="0.45"/></g>')
 
 
-def box(char: str | None = None, size_in: float = 0.72, mode: str = "empty") -> str:
-    """One practice square. mode: 'empty', 'trace' (light gray to write over) or 'model' (dark)."""
+def box(char: str | None = None, size_in: float = 0.72, mode: str = "empty", radical: bool = False) -> str:
+    """One practice square. mode: 'empty', 'trace' (light gray to write over) or 'model' (dark).
+
+    radical=True colours the radical's strokes (from radStrokes) in teal on a model.
+    """
     inner = ""
     data = load(char) if char else None
     if char and mode != "empty":
         color = INK if mode == "model" else TRACE
         if data:
-            inner = f'<g {_FLIP}>' + "".join(f'<path d="{p}" fill="{color}"/>' for p in data["strokes"]) + "</g>"
+            rad = set(data.get("radStrokes") or []) if radical and mode == "model" else set()
+            inner = f'<g {_FLIP}>' + "".join(f'<path d="{p}" fill="{RADICAL if i in rad else color}"/>'
+                                            for i, p in enumerate(data["strokes"])) + "</g>"
         else:
             inner = (f'<text x="512" y="800" font-size="760" text-anchor="middle" fill="{color}" '
                      f'font-family="PingFang SC, Heiti SC, sans-serif">{char}</text>')

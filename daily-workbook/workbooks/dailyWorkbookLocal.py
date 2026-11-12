@@ -70,6 +70,11 @@ try:
 except ImportError:
     cs311_visuals = None
 try:
+    import hanzi_notes
+    import hsk_stories
+except ImportError:
+    hanzi_notes = hsk_stories = None
+try:
     import italian
 except ImportError:
     italian = None
@@ -304,6 +309,8 @@ def get_existing_day_pack(progress: dict, date_str: str):
                 "lesson_words":    words_from_chars(day.get("lesson_chars", [])),
                 "char_practice":   vocab_by_char(day.get("char_practice_char", "")) or HSK1_VOCAB[0],
                 "all_learned_words": words_from_chars(day.get("all_learned_chars", [])),
+                "story_id":        day.get("story_id"),
+                "dialogue_id":     day.get("dialogue_id"),
             }
     return None
 
@@ -352,6 +359,9 @@ def update_hsk_progress(progress: dict, day_num: int, date_str: str, today_pack:
         "all_learned_chars":[w["char"] for w in today_pack["all_learned_words"]],
         "char_practice_char": today_pack["char_practice"]["char"],
     }
+    for key in ("story_id", "dialogue_id"):
+        if today_pack.get(key):
+            replacement[key] = today_pack[key]
     days = progress.setdefault("days", [])
     for i, day in enumerate(days):
         if day.get("date") == date_str:
@@ -1222,78 +1232,164 @@ def generate_admin_parking(ctx: dict) -> dict:
     }
 
 
+def _recent_story_picks(progress: dict, date_str: str, days: int = 3) -> tuple[list, list]:
+    """Story and dialogue ids used on the few days before date_str."""
+    earlier = sorted((d for d in progress.get("days", []) if d.get("date", "") < date_str), key=lambda d: d["date"])[-days:]
+    return [d.get("story_id") for d in earlier], [d.get("dialogue_id") for d in earlier]
+
+
+def _word_anatomy(word: dict) -> dict:
+    """Breakdown of one lesson word: each character's meaning, or a single character's parts."""
+    w = word["char"]
+    out = {"word": w, "pinyin": word.get("pinyin", ""), "meaning": word.get("meaning", ""),
+           "chars": [], "parts": [], "radical": None, "literal": "", "note": ""}
+    if not hanzi_notes:
+        return out
+    bd = hanzi_notes.word_breakdown(w)
+    if len(bd["chars"]) > 1:
+        out["chars"] = [{"char": c["char"], "pinyin": c["pinyin"], "meaning": c["meaning"].split(";")[0]} for c in bd["chars"]]
+        out["literal"] = bd["literal"].split(": ", 1)[-1] if ": " in bd["literal"] else ""
+    elif bd["chars"]:
+        c = bd["chars"][0]
+        out["parts"] = [{"char": p, "meaning": m} for p, m in c.get("parts", [])]
+        out["radical"] = hanzi_notes.radical_info(c.get("radical", ""))
+        out["note"] = c.get("note", "")
+    return out
+
+
+def _story_payload(story: dict) -> list[tuple]:
+    return [(spk, cn, py, en) for spk, cn, py, en in story["lines"]]
+
+
+_FALLBACK_STORY = {
+    "id": None, "title": "你好，小学生", "title_en": "Hello, little student",
+    "lines": [("", cn, py, en) for cn, py, en in [
+        ("你好。", "Nǐ hǎo.", "Hello."),
+        ("你好吗？", "Nǐ hǎo ma?", "How are you?"),
+        ("我很好。", "Wǒ hěn hǎo.", "I'm very well."),
+        ("我是学生。", "Wǒ shì xuésheng.", "I'm a student."),
+        ("你是老师吗？", "Nǐ shì lǎoshī ma?", "Are you a teacher?"),
+        ("我不是老师。", "Wǒ bú shì lǎoshī.", "I'm not a teacher."),
+        ("我也是学生。", "Wǒ yě shì xuésheng.", "I'm a student too."),
+        ("我很好，你呢？", "Wǒ hěn hǎo, nǐ ne?", "I'm very well. And you?"),
+    ]],
+    "questions": ["Who says hello?", "Is 我 a teacher?", "Which line asks a question?"],
+    "note": ("吗 ma", "吗 at the end turns a sentence into a yes/no question: 你是老师吗？"),
+}
+_FALLBACK_DIALOGUE = {
+    "id": None, "title": "Hi, and you?",
+    "lines": [("A", "你好！", "Nǐ hǎo!", "Hi!"), ("B", "你好！你好吗？", "Nǐ hǎo! Nǐ hǎo ma?", "Hi! How are you?"),
+              ("A", "我很好，你呢？", "Wǒ hěn hǎo, nǐ ne?", "I'm good. And you?"), ("B", "我也很好。", "Wǒ yě hěn hǎo.", "I'm good too.")],
+    "phrases": [("你呢？", "nǐ ne?", "And you?", "Bounce any question back without repeating it.")],
+}
+
+
 def build_chinese_pages(ctx: dict) -> dict:
-    """Deterministic Chinese pages using HSK1 progress — same as original."""
+    """Chinese pages from HSK 1 progress: word and character anatomy, a story and a dialogue
+    picked from hsk_stories to fit the words learned so far."""
     today_hsk = ctx["today_hsk"]
     lesson_words = today_hsk["lesson_words"][:LESSON_WORDS_PER_DAY]
     review_words = dedupe_words(today_hsk.get("review_words",[]) + today_hsk.get("lesson_words",[]))[:4]
     char_target  = today_hsk["char_practice"]
+    date_str     = ctx["today_date"]
 
-    helper_words = [
-        WORD_INDEX.get("吗") or {"char":"吗","pinyin":"ma","meaning":"question particle"},
-        WORD_INDEX.get("很") or {"char":"很","pinyin":"hěn","meaning":"very"},
-        WORD_INDEX.get("也") or {"char":"也","pinyin":"yě","meaning":"also"},
-        WORD_INDEX.get("是") or {"char":"是","pinyin":"shì","meaning":"to be"},
-        WORD_INDEX.get("学生") or {"char":"学生","pinyin":"xué sheng","meaning":"student"},
-        WORD_INDEX.get("老师") or {"char":"老师","pinyin":"lǎo shī","meaning":"teacher"},
-    ]
+    vocab   = set(WORD_INDEX)
+    learned = {w["char"] for w in today_hsk.get("all_learned_words", []) + lesson_words}
+    new     = [w["char"] for w in today_hsk.get("new_words", [])]
+    focus   = new + [w["char"] for w in lesson_words if w["char"] not in new]
 
-    story_pairs = [
-        ("你好。",         "nǐ hǎo.",              "Hello."),
-        ("我好。",         "wǒ hǎo.",              "I am good."),
-        ("你好吗？",       "nǐ hǎo ma?",           "Are you good?"),
-        ("我很好。",       "wǒ hěn hǎo.",          "I am very good."),
-        ("你也很好。",     "nǐ yě hěn hǎo.",       "You are also very good."),
-        ("我是学生。",     "wǒ shì xué sheng.",    "I am a student."),
-        ("你是老师吗？",   "nǐ shì lǎo shī ma?",  "Are you a teacher?"),
-        ("我不是老师。",   "wǒ bú shì lǎo shī.",  "I am not a teacher."),
-        ("我也是学生。",   "wǒ yě shì xué sheng.","I am also a student."),
-        ("你好，学生。",   "nǐ hǎo, xué sheng.",  "Hello, student."),
-        ("你好，老师。",   "nǐ hǎo, lǎo shī.",    "Hello, teacher."),
-        ("我很好，你呢？", "wǒ hěn hǎo, nǐ ne?",  "I am very good. And you?"),
-    ]
+    story = dialogue = None
+    if hsk_stories:
+        recent_s, recent_d = _recent_story_picks(ctx.get("progress") or {}, date_str)
+        story = hsk_stories.pick(hsk_stories.STORIES, vocab, learned, focus, recent_s, date_str, today_hsk.get("story_id"))
+        dialogue = hsk_stories.pick(hsk_stories.DIALOGUES, vocab, learned, focus, recent_d, date_str, today_hsk.get("dialogue_id"))
+    story    = story or _FALLBACK_STORY
+    dialogue = dialogue or _FALLBACK_DIALOGUE
+    today_hsk["story_id"], today_hsk["dialogue_id"] = story["id"], dialogue["id"]
+    lines = _story_payload(story)
 
-    char_examples = {"一":"一个","你":"你好","好":"你好","我":"我是学生","是":"我是学生","不":"不是","吗":"你好吗","很":"很好","也":"我也是学生"}
+    # Words in the story that aren't on the HSK list yet
+    bonus = []
+    if hsk_stories and story["id"]:
+        for w in hsk_stories.bonus_words(story, vocab):
+            py, en, lit = hanzi_notes.BONUS[w]
+            bonus.append({"char": w, "pinyin": py, "meaning": en, "literal": lit})
+
+    # Characters on today's writing page and the radicals they're built on
+    practice_chars = []
+    for v in lesson_words:
+        for ch in v["char"]:
+            if "一" <= ch <= "鿿" and ch not in practice_chars:
+                practice_chars.append(ch)
+    practice_chars = practice_chars[:6]
+    known_chars = [c for w in today_hsk.get("all_learned_words", []) + lesson_words for c in w["char"]]
+    spotlight = []
+    if hanzi_notes:
+        for ch in practice_chars:
+            info = hanzi_notes.char_info(ch)
+            if not info or any(r["radical"] == info["radical"] for r in spotlight):
+                continue
+            rad = hanzi_notes.radical_info(info["radical"])
+            if rad:
+                rad["chars"] = hanzi_notes.same_radical(info["radical"], [ch] + known_chars)[:10]
+                spotlight.append(rad)
+        spotlight = spotlight[:4]
+
+    # Review quiz from today's words
+    quiz = []
+    multi = next((w for w in lesson_words if len(w["char"]) > 1), None)
+    if multi:
+        quiz.append(f"Split {multi['char']} into its characters and write what each one means on its own.")
+    if spotlight:
+        r = spotlight[0]
+        quiz.append(f"Find the radical {r['radical']} ({r['meaning']}) in today's characters. Circle it each time.")
+    if lesson_words:
+        quiz.append(f"Write the meaning of {lesson_words[-1]['char']} without looking.")
+    quiz.append("Copy one line of the story without looking, then check it.")
 
     return {
         "chinese_lesson_page": {
             "title": "Mandarin Mini Noodle Shop",
-            "lesson_intro": "Today's Chinese page uses small HSK 1 words and lots of repetition.",
+            "lesson_intro": "Learn each word, then take it apart: what each character means and what it's built from.",
             "new_words_banner": "Today's word basket",
             "review_banner": "Review sprinkles",
             "vocab": lesson_words,
             "review_words": review_words,
+            "word_anatomy": [_word_anatomy(w) for w in lesson_words],
+            "practice_chars": practice_chars,
             "character_practice": {
                 "char": char_target["char"], "pinyin": char_target["pinyin"],
                 "meaning": char_target["meaning"],
                 "stroke_hint": "Write slowly and copy the shape like a tiny drawing.",
-                "example_word": char_examples.get(char_target["char"], char_target["char"]),
+                "example_word": char_target["char"],
             },
-            "mini_dialogue": [
-                {"speaker":"A","chinese":"你好。","pinyin":"nǐ hǎo.","meaning":"Hello."},
-                {"speaker":"B","chinese":"你好。","pinyin":"nǐ hǎo.","meaning":"Hello."},
-                {"speaker":"A","chinese":"你好吗？","pinyin":"nǐ hǎo ma?","meaning":"Are you good?"},
-                {"speaker":"B","chinese":"我很好。","pinyin":"wǒ hěn hǎo.","meaning":"I am very good."},
-            ],
-            "tiny_game": "Circle every word you recognize. Copy your favourite line once.",
+            "dialogue_title": dialogue["title"],
+            "mini_dialogue": [{"speaker": spk, "chinese": cn, "pinyin": py, "meaning": en} for spk, cn, py, en in dialogue["lines"]],
+            "dialogue_phrases": [{"chinese": cn, "pinyin": py, "meaning": en, "usage": use} for cn, py, en, use in dialogue.get("phrases", [])],
+            "tiny_game": "Cover the English and say each line out loud. Then write the phrase you'll actually use this week:",
         },
         "chinese_reference_page": {
             "title": "Tiny Mandarin Menu Card",
-            "reference_intro": "Use this page when the story feels slippery. Check the word bank, then go back.",
-            "word_bank_title": "Today's HSK 1 word bank",
-            "grammar_note": "吗 turns a statement into a yes/no question. 你好吗？ means 'Are you good?'",
-            "reader_helper_words": helper_words,
+            "reference_intro": "Use this page when the story feels slippery. Check the words and line helper, then go back.",
+            "word_bank_title": "New in this story",
+            "bonus_words": bonus,
+            "radical_spotlight": spotlight,
+            "grammar_title": story["note"][0],
+            "grammar_note": story["note"][1],
+            "reader_helper_words": [],
             "reader_translation_title": "Story line helper",
-            "reader_line_glosses": [{"line_no": i+1, "chinese": cn, "pinyin": py, "meaning": en} for i,(cn,py,en) in enumerate(story_pairs)],
-            "review_quiz_prompts": ["Write the meaning of 你好.", "Which word means I or me?", "Add 吗 to make a question.", "Copy one sentence without looking, then check it."],
+            "reader_line_glosses": [{"line_no": i+1, "chinese": cn, "pinyin": py, "meaning": en} for i, (_, cn, py, en) in enumerate(lines)],
+            "review_quiz_prompts": quiz,
         },
         "chinese_reader_page": {
             "title": "Tiny HSK 1 Story",
             "reader_intro": "Read once with pinyin, then cover the pinyin and try again.",
-            "story_title": "你好，小学生",
-            "story_lines":  [cn for cn,_,_ in story_pairs],
-            "pinyin_lines": [py for _,py,_ in story_pairs],
-            "comprehension_questions": ["Who says hello?", "Is 我 a teacher?", "Which line asks a question?", "Copy the line that feels easiest."],
+            "story_title": story["title"],
+            "story_title_en": story["title_en"],
+            "story_speakers": [spk for spk, _, _, _ in lines],
+            "story_lines":  [cn for _, cn, _, _ in lines],
+            "pinyin_lines": [py for _, _, py, _ in lines],
+            "comprehension_questions": story["questions"],
             "copywork_prompt": "Copy 3 short lines from the story. Add a sticker next to the neatest one.",
         },
     }
@@ -1698,7 +1794,42 @@ STYLES = """
   .gloss-pinyin { font-family:Menlo,Monaco,monospace; font-size:10px; color:#64788f; margin-top:2px; }
   .gloss-en { font-size:11px; color:#59697b; margin-top:4px; }
 
-  .reader-line { margin-bottom:8px; }
+  .reader-line { margin-bottom:8px; position:relative; }
+  .reader-spk { position:absolute; left:-20px; top:4px; font-family:Menlo,Monaco,monospace; font-size:10px; font-weight:800; color:#7b67a8; border:1.5px solid #d7c6ff; border-radius:6px; padding:0 4px; }
+  .reader-line:has(.reader-spk) { margin-left:22px; }
+  .wa-row { display:flex; gap:12px; align-items:flex-start; border-top:2px dashed #e3d9f5; padding:7px 0; }
+  .wa-row:first-of-type { border-top:none; }
+  .wa-word { width:96px; flex-shrink:0; }
+  .wa-big { font-size:24px; font-weight:900; color:#23675e; line-height:1.1; }
+  .wa-py { font-family:Menlo,Monaco,monospace; font-size:10px; color:#56867f; }
+  .wa-en { font-size:11px; color:#375b56; }
+  .wa-body { flex:1; }
+  .wa-parts { display:flex; align-items:center; flex-wrap:wrap; gap:4px; }
+  .wa-chip { border:2px solid #bee9e2; background:#f3fffd; border-radius:10px; padding:3px 9px; text-align:center; min-width:52px; }
+  .wa-chip.part { border-style:dashed; border-color:#c8b6ff; background:#f8f6ff; }
+  .wa-c { font-size:20px; font-weight:900; color:#2c3e50; line-height:1.15; }
+  .wa-cpy { font-family:Menlo,Monaco,monospace; font-size:9px; color:#56867f; }
+  .wa-cen { font-size:10.5px; color:#4a4a4a; }
+  .wa-plus { font-size:16px; font-weight:800; color:#b7a8d8; }
+  .wa-lit { font-size:12px; color:#5d4d85; font-weight:700; margin-top:4px; line-height:1.35; }
+  .wa-rad { font-size:11px; color:#2B9C8E; margin-top:4px; }
+  .hz-anat { font-size:11.5px; color:#4a4a4a; margin-top:3px; line-height:1.4; }
+  .hz-rad { color:#2B9C8E; font-weight:800; }
+  .hz-why { font-size:11px; color:#7a665b; margin-top:2px; line-height:1.4; font-style:italic; }
+  .phrase-row { display:flex; gap:12px; align-items:baseline; border-top:2px dashed #eadff7; padding:6px 0; }
+  .phrase-row:first-of-type { border-top:none; }
+  .phrase-cn { font-size:18px; font-weight:900; color:#4c3d6a; min-width:120px; }
+  .phrase-sub { font-family:Menlo,Monaco,monospace; font-size:10.5px; color:#7b7190; }
+  .phrase-use { font-size:12px; color:#5f5770; margin-top:2px; }
+  .bonus-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; }
+  .bonus-lit { font-size:10.5px; color:#6a7f7c; font-style:italic; margin-top:-4px; }
+  .rad-row { display:flex; gap:12px; align-items:flex-start; border-top:2px dashed #cdeee9; padding:7px 0; }
+  .rad-row:first-of-type { border-top:none; }
+  .rad-glyph { font-size:34px; font-weight:900; color:#2B9C8E; width:48px; height:48px; border:2px solid #9DD9D2; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:#F3FFFD; }
+  .rad-name { font-size:13px; font-weight:800; color:#2B665E; }
+  .rad-tip { font-size:12px; color:#4a5f5c; margin-top:2px; line-height:1.4; }
+  .rad-chars { font-size:11px; color:#6a7f7c; margin-top:3px; }
+  .rad-chars span { font-size:17px; font-weight:800; color:#2c3e50; letter-spacing:4px; }
   .reader-cn { font-size:18px; font-weight:900; color:#4b3a35; line-height:1.25; }
   .reader-pinyin { font-family:Menlo,Monaco,monospace; font-size:10px; color:#85756d; margin-top:2px; }
 
@@ -1888,7 +2019,7 @@ STYLES = """
     .dog-block, .morning-checklist, .one-thing-box, .brain-dump-box,
     .stretch-card, .exercise-card, .dinner-card,
     .admin-card, .parking-card, .offline-card, .algo-card, .algo-intro, .walk-step, .prompt-card, .lc-card, .hz-card, .evening-dog,
-    .vocab-card, .check-card, .dialogue-card, .gloss-card,
+    .vocab-card, .check-card, .dialogue-card, .gloss-card, .wa-row, .rad-row, .phrase-row,
     .doodle-cloud, .sticker-slot {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
@@ -1905,6 +2036,8 @@ STYLES = """
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
+
+    .card.split-ok, .split-ok .gloss-grid, .split-ok .bonus-grid { page-break-inside: auto !important; break-inside: auto !important; }
 
     .page { font-size: 95% !important; }
     .card, .hero-card, .weather-card, .moon-card, .cycle-card { margin-bottom:9px !important; }
@@ -1999,7 +2132,10 @@ def build_html(wb: dict) -> str:
     dialogue_html = "".join(dialogue_row(l) for l in chinese_lesson["mini_dialogue"])
     helper_html = "".join(vocab_card(v) for v in chinese_ref["reader_helper_words"])
     gloss_html = "".join(f'<div class="gloss-card"><div class="gloss-line-no">Line {esc(str(item.get("line_no","")))} </div><div class="gloss-cn">{esc(item.get("chinese",""))}</div><div class="gloss-pinyin">{esc(item.get("pinyin",""))}</div><div class="gloss-en">{esc(item.get("meaning",""))}</div></div>' for item in chinese_ref["reader_line_glosses"])
-    reader_html = "".join(f'<div class="reader-line"><div class="reader-cn">{esc(cn)}</div><div class="reader-pinyin">{esc(py)}</div></div>' for cn,py in zip(chinese_reader["story_lines"], chinese_reader["pinyin_lines"]))
+    speakers = chinese_reader.get("story_speakers") or [""] * len(chinese_reader["story_lines"])
+    reader_html = "".join(
+        f'<div class="reader-line">{f"""<span class="reader-spk">{esc(spk)}</span>""" if spk else ""}<div class="reader-cn">{esc(cn)}</div><div class="reader-pinyin">{esc(py)}</div></div>'
+        for spk, cn, py in zip(speakers, chinese_reader["story_lines"], chinese_reader["pinyin_lines"]))
     char_boxes = "".join('<div class="trace-box big"></div>' for _ in range(8))
     doodle_html = "".join(doodle_cloud(p) for p in creativity["doodle_prompts"])
     affirmation_chips = "".join(chip(a, "#EFFFF7","#9DD9D2","#2B665E") for a in creativity["affirmations"])
@@ -2864,8 +3000,29 @@ def build_html(wb: dict) -> str:
 
     parts.append("<!--SECTION:chinese-->")
     # ── PAGES 5-7: Chinese ────────────────────────────────────────────────────────
+    def anatomy_row(a):
+        head = (f'<div class="wa-word"><div class="wa-big">{esc(a["word"])}</div>'
+                f'<div class="wa-py">{esc(a["pinyin"])}</div><div class="wa-en">{esc(a["meaning"])}</div></div>')
+        if a.get("chars"):
+            chips = '<span class="wa-plus">+</span>'.join(
+                f'<div class="wa-chip"><div class="wa-c">{esc(c["char"])}</div><div class="wa-cpy">{esc(c["pinyin"])}</div>'
+                f'<div class="wa-cen">{esc(c["meaning"])}</div></div>' for c in a["chars"])
+            lit = f'<div class="wa-lit">→ {esc(a["literal"])}</div>' if a.get("literal") else ""
+            body = f'<div class="wa-parts">{chips}</div>{lit}'
+        else:
+            chips = '<span class="wa-plus">+</span>'.join(
+                f'<div class="wa-chip part"><div class="wa-c">{esc(p["char"])}</div><div class="wa-cen">{esc(p["meaning"])}</div></div>'
+                for p in a.get("parts", []))
+            rad = a.get("radical")
+            rad_html = (f'<div class="wa-rad">radical <b>{esc(rad["radical"])}</b> {esc(rad["pinyin"])} · {esc(rad["meaning"])}</div>'
+                        if rad else "")
+            body = (f'<div class="wa-parts">{chips}</div>' if chips else "") + rad_html + \
+                   (f'<div class="wa-lit">{esc(a["note"])}</div>' if a.get("note") else "")
+        return f'<div class="wa-row">{head}<div class="wa-body">{body}</div></div>'
+
+    anatomy_html = "".join(anatomy_row(a) for a in chinese_lesson.get("word_anatomy", []))
     parts.append(f"""
-<div class="page"><div class="frame">
+<div class="page flow"><div class="frame">
   {section_title("Chinese lesson", chinese_lesson["title"], "learn & review")}
   <div class="card">
     <div class="mini-title">Lesson intro</div>
@@ -2875,6 +3032,11 @@ def build_html(wb: dict) -> str:
     <div class="mini-title">{esc(chinese_lesson["new_words_banner"])}</div>
     <div class="vocab-grid">{lesson_vocab_html}</div>
   </div>
+  {f'''<div class="card split-ok">
+    <div class="mini-title">Take it apart 拆字</div>
+    <div class="mini-note" style="margin-bottom:6px;">Words: what each character means on its own. Single characters: the pieces they're built from.</div>
+    {anatomy_html}
+  </div>''' if anatomy_html else ""}
   <div class="card">
     <div class="mini-title">{esc(chinese_lesson["review_banner"])}</div>
     <div class="vocab-grid">{review_vocab_html}</div>
@@ -2883,27 +3045,41 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
-    # Writing practice: stroke order + 田字格 squares for each new character
-    seen_chars, practice_cards = [], []
-    for v in chinese_lesson.get("vocab", []):
-        for ch in v.get("char", ""):
-            if "\u4e00" <= ch <= "\u9fff" and ch not in seen_chars:
-                seen_chars.append(ch)
+    # Writing practice: stroke order, radical and parts, 田字格 squares for each character
+    seen_chars, practice_cards = list(chinese_lesson.get("practice_chars") or []), []
+    if not seen_chars:
+        for v in chinese_lesson.get("vocab", []):
+            for ch in v.get("char", ""):
+                if "一" <= ch <= "鿿" and ch not in seen_chars:
+                    seen_chars.append(ch)
     for ch in seen_chars[:6]:
         word = WORD_INDEX.get(ch) or next((w for w in chinese_lesson.get("vocab", []) if ch in w.get("char", "")), {})
+        info = hanzi_notes.char_info(ch) if hanzi_notes else None
+        pinyin = info["pinyin"] if info else word.get("pinyin", "")
+        meaning = info["meaning"] if info else word.get("meaning", "")
         in_word = "" if word.get("char") == ch else f' · in {esc(word.get("char",""))}'
         n = hanzi.stroke_count(ch) if hanzi else None
         strip = hanzi.stroke_order(ch) if hanzi else ""
         boxes1 = "".join(hanzi.box(ch, 0.7, "trace") for _ in range(3)) + "".join(hanzi.box(None, 0.7) for _ in range(6)) if hanzi else ""
         boxes2 = "".join(hanzi.box(None, 0.7) for _ in range(9)) if hanzi else ""
+        anat = ""
+        if info:
+            pieces = " + ".join(f'<b>{esc(p)}</b> {esc(m)}' if m else f'<b>{esc(p)}</b>' for p, m in info["parts"])
+            if info["is_radical"]:
+                rad_line = f'<span class="hz-rad">{esc(ch)} is a radical itself</span> · {esc(info["radical_meaning"])}'
+            else:
+                rad_line = (f'<span class="hz-rad">radical {esc(info["radical"])}</span> '
+                            f'{esc(info["radical_pinyin"])} · {esc(info["radical_meaning"])}')
+            anat = (f'<div class="hz-anat">{rad_line}{" &nbsp;|&nbsp; parts: " + pieces if pieces else ""}</div>'
+                    f'<div class="hz-why">{esc(info["note"])}</div>')
         practice_cards.append(f'''
   <div class="card hz-card">
     <div class="hz-head">
-      {hanzi.box(ch, 0.95, "model") if hanzi else f'<div class="vocab-char">{esc(ch)}</div>'}
+      {hanzi.box(ch, 0.95, "model", radical=True) if hanzi else f'<div class="vocab-char">{esc(ch)}</div>'}
       <div>
-        <div class="hz-title">{esc(ch)} <span class="hz-pinyin">{esc(word.get("pinyin",""))}</span></div>
-        <div class="footer-note">{esc(word.get("meaning",""))}{in_word}{f" · {n} strokes" if n else ""}</div>
-        <div class="mini-note">Stroke order: the red stroke is the new one; the circle shows where the pen starts.</div>
+        <div class="hz-title">{esc(ch)} <span class="hz-pinyin">{esc(pinyin)}</span></div>
+        <div class="footer-note">{esc(meaning)}{in_word}{f" · {n} strokes" if n else ""}</div>
+        {anat}
       </div>
     </div>
     {strip}
@@ -2915,18 +3091,25 @@ def build_html(wb: dict) -> str:
         parts.append(f"""
 <div class="page flow"><div class="frame">
   {section_title("Chinese writing", "Write It: 写字", "stroke by stroke")}
-  <div class="footer-note" style="margin-bottom:8px;">Trace the gray characters first, then write on your own. Say the sound out loud each time you write it.</div>
+  <div class="footer-note" style="margin-bottom:8px;">Trace the gray characters first, then write on your own. Say the sound out loud each time you write it.
+  <span style="color:#2B9C8E;font-weight:800;">Teal strokes</span> are the radical; the red stroke in the strip is the new one and the circle shows where the pen starts.</div>
   {"".join(practice_cards)}
   <div style="flex:1"></div>
 </div></div>
 """)
 
+    phrases_html = "".join(
+        f'<div class="phrase-row"><div class="phrase-cn">{esc(p["chinese"])}</div>'
+        f'<div><div class="phrase-sub">{esc(p["pinyin"])}{" · " if p["pinyin"] and p["meaning"] else ""}{esc(p["meaning"])}</div>'
+        f'<div class="phrase-use">{esc(p["usage"])}</div></div></div>'
+        for p in chinese_lesson.get("dialogue_phrases", []))
     parts.append(f"""
 <div class="page flow"><div class="frame">
-  {section_title("Chinese lesson", "Mini dialogue", "read it aloud")}
+  {section_title("Chinese lesson", "Everyday talk: " + chinese_lesson.get("dialogue_title", "Mini dialogue"), "read it aloud")}
   <div class="card">
     {dialogue_html}
   </div>
+  {f'<div class="card"><div class="mini-title">Phrases to steal</div>{phrases_html}</div>' if phrases_html else ""}
   <div class="card">
     <div class="mini-title">Tiny game</div>
     <div class="footer-note">{esc(chinese_lesson["tiny_game"])}</div>
@@ -2936,22 +3119,35 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
+    bonus_html = "".join(
+        f'<div class="vocab-card"><div class="vocab-char">{esc(b["char"])}</div><div class="vocab-pinyin">{esc(b["pinyin"])}</div>'
+        f'<div class="vocab-meaning">{esc(b["meaning"])}</div>'
+        f'{f"""<div class="bonus-lit">{esc(b["literal"])}</div>""" if b.get("literal") else ""}</div>'
+        for b in chinese_ref.get("bonus_words", []))
+    spotlight_html = "".join(
+        f'<div class="rad-row"><div class="rad-glyph">{esc(r["radical"])}</div>'
+        f'<div><div class="rad-name">{esc(r["pinyin"])} · {esc(r["meaning"])}</div>'
+        f'<div class="rad-tip">{esc(r["tip"])}</div>'
+        f'<div class="rad-chars">In characters you know: <span>{" ".join(esc(c) for c in r["chars"])}</span></div></div></div>'
+        for r in chinese_ref.get("radical_spotlight", []))
     parts.append(f"""
 <div class="page flow"><div class="frame">
   {section_title("reference page", chinese_ref["title"], "cheat sheet")}
-  <div class="card">
-    <div class="mini-title">How to use this page</div>
-    <div class="footer-note">{esc(chinese_ref["reference_intro"])}</div>
-  </div>
-  <div class="card">
+  {f'''<div class="card split-ok">
     <div class="mini-title">{esc(chinese_ref["word_bank_title"])}</div>
-    <div class="vocab-grid">{helper_html}</div>
-  </div>
+    <div class="mini-note" style="margin-bottom:6px;">Not on your HSK list yet. Read them, don't memorise them.</div>
+    <div class="bonus-grid">{bonus_html}</div>
+  </div>''' if bonus_html else ""}
+  {f'''<div class="card split-ok">
+    <div class="mini-title">Radical spotlight 部首</div>
+    <div class="mini-note" style="margin-bottom:6px;">The radical is the part a dictionary files a character under. It often hints at the meaning; the other part often hints at the sound.</div>
+    {spotlight_html}
+  </div>''' if spotlight_html else ""}
   <div class="card">
-    <div class="mini-title">Grammar note</div>
+    <div class="mini-title">Grammar & phrase note: {esc(chinese_ref.get("grammar_title", ""))}</div>
     <div class="footer-note">{esc(chinese_ref["grammar_note"])}</div>
   </div>
-  <div class="card">
+  <div class="card split-ok">
     <div class="mini-title">{esc(chinese_ref["reader_translation_title"])}</div>
     <div class="gloss-grid">{gloss_html}</div>
   </div>
@@ -2967,7 +3163,7 @@ def build_html(wb: dict) -> str:
 <div class="page flow"><div class="frame">
   {section_title("graded reader", chinese_reader["title"], "read slowly")}
   <div class="card">
-    <div class="mini-title">{esc(chinese_reader["story_title"])}</div>
+    <div class="mini-title" style="font-size:20px;">{esc(chinese_reader["story_title"])} <span style="font-size:12px;font-weight:600;color:#85756d;">{esc(chinese_reader.get("story_title_en", ""))}</span></div>
     <div class="footer-note">{esc(chinese_reader["reader_intro"])}</div>
   </div>
   <div class="card">{reader_html}</div>
