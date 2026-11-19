@@ -1096,69 +1096,14 @@ def generate_leetcode_page(ctx: dict) -> dict:
 
 
 def generate_reading_page(ctx: dict) -> dict:
-    """Today's saved Substack article (reading.py) + five writing prompts."""
+    """Today's saved Substack article (reading.py) + the summary/opinion prompts."""
     if reading is None:
         return {}
     article = reading.article_for(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
     if not article:
         return {}
-    lenses = reading.PROMPT_LENSES
-    prompts = article.get("prompts")
-    if not prompts or len(prompts) != len(lenses):
-        lens_lines = "\n".join(f'{i}. {name}. Must begin with: "{stem}"'
-                               for i, (name, stem, _, _) in enumerate(lenses, 1))
-        prompt = (
-            "You write journaling prompts for someone reading an article on paper. "
-            "The prompts should build critical thinking and a deeper understanding of "
-            "the topic, not just ask for opinions.\n\n"
-            f"Article: {article['title']}" + (f" by {article['author']}" if article.get("author") else "") + "\n\n"
-            f"{reading.article_excerpt(article)}\n\n"
-            "Write exactly 5 writing prompts, one for each lens below, in the same order. "
-            "Each prompt must start with the exact words given, then name a specific "
-            "claim, example or idea from THIS article. Each is 1 or 2 sentences and "
-            "asks the reader to write, not just answer yes or no.\n"
-            "- Lens 1 asks for a plain restatement of the argument, not a new insight.\n"
-            "- Lens 2 names one unproven belief the article relies on.\n"
-            "- Lens 3 asks the reader to argue the opposite side.\n"
-            "- Lens 4 names a specific fact, study or history to look up.\n"
-            "- Lens 5 connects to the reader's own life.\n\n"
-            f"{lens_lines}\n\n"
-            "Reply with only the 5 prompts, numbered 1. to 5., one per line."
-        )
-        prompts = None
-        for attempt in (1, 2):
-            try:
-                print(f"⏳ reading_prompts (attempt {attempt})")
-                got = _parse_numbered_prompts(generate_text_local(prompt, max_tokens=600), len(lenses))
-            except Exception as e:
-                print(f"⚠ reading_prompts failed: {e}")
-                got = {}
-            if len(got) >= 4:
-                prompts = [got.get(i, lenses[i - 1][2]) for i in range(1, len(lenses) + 1)]
-                print("✓ reading_prompts")
-                reading.save_prompts(article, prompts)
-                break
-        if prompts is None:
-            print("⚠ Using the general writing prompts")
-            prompts = [fallback for _, _, fallback, _ in lenses]
-    return {**article, "prompts": [{"lens": name, "text": text, "follow": follow}
-                                   for (name, _, _, follow), text in zip(lenses, prompts)]}
-
-
-def _parse_numbered_prompts(text: str, count: int) -> dict[int, str]:
-    """Read '1. ...' lines from model output into {number: prompt}."""
-    import re
-    out: dict[int, str] = {}
-    for line in text.splitlines():
-        m = re.match(r"^\s*\(?(\d+)[.):]\s*(.+)$", line)
-        if not m:
-            continue
-        n, body = int(m.group(1)), m.group(2).strip().strip('"*')
-        # Drop a lens label the model may have echoed, e.g. "Assumptions: ..."
-        body = re.sub(r"^(In your own words|Assumptions|Push back|Go deeper|Connect)\s*[:\-–—]\s*", "", body, flags=re.I)
-        if 1 <= n <= count and len(body) > 20 and n not in out:
-            out[n] = body
-    return out
+    return {**article, "prompts": [{"lens": label, "text": text, "follow": follow, "lines": lines}
+                                   for label, text, follow, lines in reading.WRITING_PROMPTS]}
 
 
 def generate_chores_page(ctx: dict) -> dict:
@@ -2389,17 +2334,25 @@ def build_html(wb: dict) -> str:
     lc = wb.get("_leetcode") or {}
     if lc:
         lp = lc.get("problem")
-        reviews_html = ""
-        for r in lc.get("reviews", []):
-            reviews_html += (f'<div class="card lc-card"><div class="mini-title">🔁 Re-solve from memory: #{r["lc"]} {esc(r["title"])} '
-                             f'<span class="lc-meta">{esc(r["pattern"])} · from {r["days_ago"]} days ago</span></div>'
-                             f'<div class="footer-note">From memory: write the key idea, then the code. Check it on the LeetCode answer page.</div>'
-                             f'{blank_lines(5, "#C9D6E8", 22)}</div>')
-        if lp:
-            ex_html = "".join(
+
+        def examples_html(p):
+            return "".join(
                 f'<div class="lc-example"><b>Input:</b> {esc(i)}<br><b>Output:</b> {esc(o)}'
                 + (f'<br><span class="lc-why">{esc(w)}</span>' if w else "") + "</div>"
-                for i, o, w in lp["examples"])
+                for i, o, w in p.get("examples", []))
+
+        reviews_html = ""
+        for r in lc.get("reviews", []):
+            reviews_html += (f'<div class="card lc-card"><div class="mini-title">🔁 Re-solve: #{r["lc"]} {esc(r["title"])} '
+                             f'<span class="lc-meta">from {r["days_ago"]} days ago</span></div>'
+                             f'<div class="lc-statement">{esc(r.get("statement", ""))}</div>'
+                             f'<div class="lc-ex-grid">{examples_html(r)}</div>'
+                             f'<div class="footer-note" style="margin-top:4px;"><b>Constraints:</b> {esc(r.get("constraints", ""))}</div>'
+                             f'<div class="footer-note" style="margin-top:6px;">Without looking back: name the pattern, write the key idea, then the code. '
+                             f'Check it against the solution on the LeetCode answer page.</div>'
+                             f'{blank_lines(7, "#C9D6E8", 22)}</div>')
+        if lp:
+            ex_html = examples_html(lp)
             intro = (f'<div class="card lc-card lc-intro"><div class="mini-title">🧩 New pattern: {esc(lp["pattern"])}</div>'
                      f'<div class="footer-note">{esc(lc.get("pattern_intro",""))}</div></div>') if lc.get("new_pattern") else ""
             def step(letter, name, prompt, lines, height=24):
@@ -2588,22 +2541,16 @@ def build_html(wb: dict) -> str:
   <div style="flex:1"></div>
 </div></div>
 """)
-        lens_colors = {"In your own words": ("#EFF7FF", "#A8C4D8", "#2F5277"),
-                       "Assumptions": ("#FFF8E7", "#F5D38B", "#7D5B21"),
-                       "Push back": ("#FFF0F5", "#F2B5CF", "#7B4C62"),
-                       "Go deeper": ("#F7F4FF", "#C8B6FF", "#5D4D85"),
-                       "Connect": ("#EFFFF7", "#9DD9D2", "#2B665E")}
-        def prompt_card(n, pr, lines):
+        lens_colors = {"Summary": ("#EFF7FF", "#A8C4D8", "#2F5277"),
+                       "My take": ("#FFF0F5", "#F2B5CF", "#7B4C62")}
+        def prompt_card(n, pr):
             bg, border, fg = lens_colors.get(pr["lens"], ("#F9F9F9", "#C8C8C8", "#555"))
             return (f'<div class="card prompt-card"><div>{chip(pr["lens"], bg, border, fg)}</div>'
                     f'<div class="prompt-text">{n}. {esc(pr["text"])}</div>'
-                    f'<div class="prompt-follow">{esc(pr.get("follow",""))}</div>{blank_lines(lines)}</div>')
+                    f'<div class="prompt-follow">{esc(pr.get("follow",""))}</div>{blank_lines(pr.get("lines", 6))}</div>')
         prs = art.get("prompts", [])
-        # Long model-written prompts take more room; drop a writing line so the
-        # first three still fit on one sheet.
-        first_lines = 4 if sum(len(pr["text"]) for pr in prs[:3]) <= 420 else 3
-        first = "".join(prompt_card(n, pr, first_lines) for n, pr in enumerate(prs[:3], 1))
-        second = "".join(prompt_card(n, pr, 6) for n, pr in enumerate(prs[3:], 4))
+        first = "".join(prompt_card(n, pr) for n, pr in enumerate(prs[:1], 1))
+        second = "".join(prompt_card(n, pr) for n, pr in enumerate(prs[1:], 2))
         parts.append(f"""
 <div class="page flow"><div class="frame">
   {section_title("reading", "Write About It", "think it through")}
@@ -3293,7 +3240,8 @@ def build_html(wb: dict) -> str:
     <div class="algo-why" style="margin-top:6px;"><b>Pattern note.</b> {esc(lp["takeaway"])} Copy this into your own words in your pattern notebook.</div>
   </div>"""
         rev_html = "".join(
-            f'<div class="card lc-card"><div class="mini-title">Re-solve check: #{r["lc"]} {esc(r["title"])}</div>'
+            f'<div class="card lc-card"><div class="mini-title">Re-solve check: #{r["lc"]} {esc(r["title"])} '
+            f'<span class="lc-meta">{esc(r["pattern"])}</span></div>'
             f'<pre class="lc-code">{esc(r["solution"])}</pre></div>' for r in lc.get("reviews", []))
         parts.append(f"""
 <div class="page flow"><div class="frame">

@@ -4,7 +4,7 @@
 Paste links into reading_links.txt (one per line), or use `add`. During your
 online time run `fetch` to download each new article into reading/ as plain
 text. The workbook itself never goes online: it prints one downloaded
-article a day, plus reflection questions from your local model.
+article a day, plus writing prompts to summarize it and give your take.
 
     python3 reading.py add https://example.substack.com/p/some-post [more urls]
     python3 reading.py fetch      # online: download any links not saved yet
@@ -37,25 +37,14 @@ LINKS_HEADER = """# Substack links to read, one per line. Run `python3 reading.p
 """
 USER_AGENT = "Mozilla/5.0 (Macintosh) DailyWorkbook/1.0 (personal reading list)"
 
-# The five lenses the writing prompts cover, in order. The local model writes
-# one article-specific prompt per lens; these generic ones are the fallback.
-PROMPT_LENSES = [
-    # (lens, required opening for the model, fallback prompt, follow-up printed under it)
-    ("In your own words", "In your own words, explain",
-     "In your own words, explain the author's central argument as if to a friend who hasn't read it.",
-     "Then name the single strongest piece of support the author gives."),
-    ("Assumptions", "The author takes for granted that",
-     "The author takes for granted that some things are true without proving them. Pick one.",
-     "Is it actually true? Write what would change about the argument if it weren't."),
-    ("Push back", "Make the strongest case against",
-     "Make the strongest case against the article's main claim.",
-     "Argue it as if you believed it. Then say where the article answers you well, or doesn't."),
-    ("Go deeper", "To understand this topic better, find out",
-     "To understand this topic better, find out what context, data or history is missing here.",
-     "Write what you expect to find, and add the questions to your online list."),
-    ("Connect", "Think of a time",
-     "Think of a time you saw this play out in your own life or community.",
-     "Has this article changed what you think, or what you'll do?"),
+# The writing prompts printed after every article: (label, prompt, follow-up,
+# writing lines). Fixed on purpose: the local model kept misreading articles
+# (often taking them to mean the opposite), so you do the reading.
+WRITING_PROMPTS = [
+    ("Summary", "Summarize the article in your own words.",
+     "What is the author arguing, and what do they want you to take away?", 9),
+    ("My take", "What do you think of it?",
+     "Where do you agree, where don't you, and why? Point to specific parts of the article.", 11),
 ]
 
 
@@ -344,23 +333,6 @@ def article_for(day: date | None = None, mark: bool = True) -> dict | None:
         by_date[key] = pick["url"]
         save_progress(progress)
     return pick
-
-
-def save_prompts(article: dict, prompts: list[str]) -> None:
-    article["prompts"] = prompts
-    save_article(article)
-
-
-def article_excerpt(article: dict, max_words: int = 1800) -> str:
-    """Plain text for the model prompt, trimmed to keep generation fast."""
-    words, out = 0, []
-    for b in article.get("blocks", []):
-        n = len(b["text"].split())
-        if words + n > max_words:
-            break
-        out.append(b["text"])
-        words += n
-    return "\n\n".join(out)
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
