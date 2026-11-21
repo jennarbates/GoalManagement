@@ -1,6 +1,8 @@
 {
   "by_date": {
     "2026-11-09": "contains-duplicate",
-    "2026-11-10": "valid-anagram"
+    "2026-11-10": "valid-anagram",
+    "2026-11-21": "two-sum",
+    "2026-11-22": "longest-common-prefix"
   }
 }

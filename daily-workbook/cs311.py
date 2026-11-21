@@ -28,7 +28,7 @@ from pathlib import Path
 
 PROBLEMS_FILE = Path(__file__).resolve().parent / "cs311_problems.json"
 COURSE_NAME = "CS311 Algorithms"
-COURSE_START = date(2026, 11, 17)  # day 1 of the course (nothing before it)
+COURSE_START = date(2026, 11, 19)  # day 1 of the course (nothing before it)
 COURSE_PER_DAY = 6                # course-order questions per day
 # Topics (by "key") the course-order walk skips because you already know them.
 # They still come up now and then as the random review question.

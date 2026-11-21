@@ -921,6 +921,15 @@ def fetch_weather() -> dict:
                 "icon":        p.get("icon", ""),
             }
 
+        # Building ahead (--date): start from the workbook day's first period,
+        # not the current one, so "today" is that day's forecast.
+        target = wb_now().date().isoformat()
+        if target > datetime.now().date().isoformat():
+            periods = [p for p in periods if (p.get("startTime") or "")[:10] >= target]
+            if not periods:
+                base["error"] = "Forecast doesn't reach that far ahead"
+                return base
+
         # First 3 periods cover today, tonight, tomorrow
         parsed = [parse_period(p) for p in periods[:4]]
         base["today"]    = parsed[0] if len(parsed) > 0 else {}
@@ -949,7 +958,11 @@ def fetch_weather() -> dict:
             req3 = urllib.request.Request(NWS_HOURLY_URL, headers=NWS_HEADERS)
             with urllib.request.urlopen(req3, timeout=WEATHER_TIMEOUT) as resp3:
                 hourly_data = json.loads(resp3.read().decode())
-            hourly_periods = hourly_data.get("properties", {}).get("periods", [])[:12]
+            hourly_periods = hourly_data.get("properties", {}).get("periods", [])
+            if target > datetime.now().date().isoformat():
+                hourly_periods = [p for p in hourly_periods
+                                  if (p.get("startTime") or "")[:13] >= f"{target}T07"]
+            hourly_periods = hourly_periods[:12]
             base["hourly"] = [
                 {
                     "time":       p.get("startTime", "")[-14:-9] if p.get("startTime") else "",
@@ -3329,26 +3342,39 @@ def find_browser_binary() -> str | None:
     ]
     return next((str(c) for c in candidates if c and Path(c).exists()), None)
 
+def find_headless_shells() -> list[str]:
+    """Playwright's chrome-headless-shell builds, newest first.
+
+    Chrome 157 fails to print long workbooks ("Printing failed", no file), so
+    these are the fallback when the regular browser doesn't produce a PDF.
+    """
+    root = Path.home() / "Library" / "Caches" / "ms-playwright"
+    shells = root.glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell")
+    return [str(p) for p in sorted(shells, key=lambda p: p.parts[-3], reverse=True)]
+
 def export_pdf(html_path: Path) -> Path | None:
-    browser = find_browser_binary()
-    if not browser:
+    browsers = [b for b in [find_browser_binary(), *find_headless_shells()] if b]
+    if not browsers:
         print("⚠ No Chrome/Chromium/Brave found. Skipping PDF export.")
         return None
     pdf_path = html_path.with_suffix(".pdf")
-    cmd = [browser, "--headless=new", "--disable-gpu", "--no-sandbox",
-           f"--print-to-pdf={pdf_path}", "--print-to-pdf-no-header",
-           str(html_path.resolve())]
-    try:
-        print("⏳ Exporting PDF...")
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print("⏳ Exporting PDF...")
+    for browser in browsers:
+        pdf_path.unlink(missing_ok=True)
+        cmd = [browser, "--headless=new", "--disable-gpu", "--no-sandbox",
+               f"--print-to-pdf={pdf_path}", "--print-to-pdf-no-header", "--no-pdf-header-footer",
+               str(html_path.resolve())]
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
+        except Exception as e:
+            print(f"⚠ PDF export with {Path(browser).name} failed: {e}")
+            continue
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            print(f"✓ PDF saved: {pdf_path}")
+            print(f"✓ PDF saved: {pdf_path} ({Path(browser).name})")
             return pdf_path
-        print("⚠ PDF command ran but no file created.")
-        return None
-    except Exception as e:
-        print(f"⚠ PDF export failed: {e}")
-        return None
+        print(f"⚠ {Path(browser).name} ran but made no PDF; trying the next browser.")
+    print("⚠ PDF export failed with every browser.")
+    return None
 
 def send_email(subject, body, attachments):
     if not GMAIL_APP_PASSWORD:
