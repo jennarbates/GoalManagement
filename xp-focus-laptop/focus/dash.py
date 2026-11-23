@@ -308,8 +308,8 @@ dash.py - the progress dashboard
   MILESTONES  stars at 1, 5, 10, 25, 50, 75, 100 ... and a bar to the next
   ACTIVITY    cycles across, days down; brighter green = more pomodoros
   ROUTINES    each routine over the last 12 focus days, and its streak
-  PRACTICE    rungs climbed on each ladder, reps, and how often the
-              feared outcome really happened
+  PRACTICE    rungs climbed on each ladder, a dot per rep coloured by how
+              hard it was, and bars for "feared it" against "it happened"
   VELOCITY    points finished per cycle
   GOALS       points per goal, for tasks tagged like #hsk or #cs311
 """

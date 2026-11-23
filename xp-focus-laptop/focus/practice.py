@@ -4,6 +4,7 @@
 import re
 import textwrap
 
+import celebrate
 import focuslib as fl
 
 HELP = """
@@ -19,6 +20,11 @@ do not like. Each has five rungs. Aim for one rep per ladder per cycle.
               afraid will happen
   u / d       move a ladder up or down a rung
   l           read a whole ladder
+
+The ladders are drawn with a marker on your rung and the rungs below it
+filled in. Each rep is a dot: green boring, yellow uncomfortable, red very
+hard - a rung going from red to green is the progress. The two FEAR bars
+compare how often you feared an outcome with how often it happened.
 
 After a rep it asks what you did, what you felt, the outcome, whether the
 feared thing happened, how hard it was, and whether you used the escape.
@@ -132,28 +138,93 @@ def rows(day):
     return out
 
 
+HARD_COLOR = {"1": "green", "2": "yellow", "3": "red"}
+COLUMN = 25
+
+
+def rep_dots(ladder, limit=12):
+    """One dot per rep, coloured by how hard it was: green boring, red very hard."""
+    cells = [(HARD_COLOR.get(rep.get("hard"), "grey"), "o") for rep in ladder["reps"][-limit:]]
+    return cells or [("grey", "-")]
+
+
+def fear_counts(state):
+    """(reps with an answer, feared thing happened, happened partly)."""
+    answers = [rep.get("feared_happened") for name in ORDER for rep in state[name]["reps"]]
+    answers = [a for a in answers if a in ("y", "n", "partly")]
+    return len(answers), answers.count("y"), answers.count("partly")
+
+
+def fear_rows(state, first="FEAR"):
+    """Two bars: how often you feared an outcome, and how often it happened."""
+    total, happened, partly = fear_counts(state)
+    if not total:
+        return []
+    scale = 1 if total <= 40 else 2
+    note = "  {}".format(happened)
+    if partly:
+        note += "  (+{} partly)".format(partly)
+    return [
+        [label(first), ("plain", "{:<12}".format("feared it")),
+         ("on_yellow", "#" * max(1, total // scale)), ("plain", "  {}".format(total))],
+        [label(""), ("plain", "{:<12}".format("it happened")),
+         ("on_red", "#" * (happened // scale)), ("plain", note)],
+    ]
+
+
 def dash_rows(day):
-    """Rows for the dashboard: rungs climbed, reps, and the feared-outcome count."""
+    """Rows for the dashboard: rungs, a dot per rep, and fear against reality."""
     state = load()
-    out, total, happened = [], 0, 0
+    out = []
     for i, name in enumerate(ORDER):
         ladder = state[name]
         cells = [label("PRACTICE" if i == 0 else ""), ("plain", "{:<12}".format(name))]
         for rung in range(1, 6):
             cells.append(("on_green", "##") if rung <= ladder["rung"] else ("grey", ".."))
             cells.append(("plain", " "))
-        cells.append(("plain", " rung {}  reps {:<3}".format(ladder["rung"], len(ladder["reps"]))))
+        cells.append(("plain", " r{}  ".format(ladder["rung"])))
+        dots = rep_dots(ladder)
+        cells += dots + [("plain", " " * (13 - len(dots)))]
         cells.append(("green", "done this cycle") if done_this_cycle(ladder, day)
-                     else ("grey", "not yet this cycle"))
+                     else ("grey", "not yet"))
         out.append(cells)
-        for rep in ladder["reps"]:
-            if rep.get("feared_happened") in ("y", "n", "partly"):
-                total += 1
-                happened += rep["feared_happened"] == "y"
-    if total:
-        out.append([label(""), ("yellow", "the feared outcome happened in {} of {} reps".format(
-            happened, total))])
-    return out
+    return out + fear_rows(state, "")
+
+
+def _pad(cells, width):
+    used = sum(len(text) for _, text in cells)
+    return cells + [("plain", " " * max(0, width - used))]
+
+
+def ladder_rows(state):
+    """The three ladders drawn side by side, with a marker on your rung."""
+    columns = []
+    for name in ORDER:
+        ladder = state[name]
+        lines = [[("bold", "  " + name.upper())]]
+        for rung in range(5, 0, -1):
+            lines.append([("plain", "    |-----|")])
+            if rung == ladder["rung"]:
+                lines.append([("plain", "  {} |".format(rung)), ("yellow", " (o) "),
+                              ("plain", "|"), ("yellow", " <- you")])
+            elif rung < ladder["rung"]:
+                lines.append([("plain", "  {} |".format(rung)), ("on_green", "#####"), ("plain", "|")])
+            else:
+                lines.append([("grey", "  {} |     |".format(rung))])
+        lines.append([("plain", "    |-----|")])
+        lines.append([("plain", "  reps ")] + rep_dots(ladder))
+        columns.append(lines)
+    return [sum((_pad(column[i], COLUMN) for column in columns), [("plain", "  ")])
+            for i in range(len(columns[0]))]
+
+
+def banner(screen, text):
+    width = len(text) + 10
+    screen.line("")
+    screen.line("  " + "*" * width, "yellow")
+    screen.line("  *    " + text + "    *", "yellow")
+    screen.line("  " + "*" * width, "yellow")
+    screen.line("")
 
 
 def show_ladder(screen, name, rung):
@@ -171,11 +242,19 @@ def overview(screen, day):
     state = load()
     screen.line("")
     screen.line("== PRACTICE LADDERS ==", "yellow")
+    screen.line("")
+    for row in ladder_rows(state):
+        screen.row(row)
+    screen.row([("grey", "    dots: "), ("green", "o"), ("grey", " boring  "), ("yellow", "o"),
+                ("grey", " uncomfortable  "), ("red", "o"), ("grey", " very hard")])
+    for row in fear_rows(state):
+        screen.line("") if row[0][1].strip() else None
+        screen.row(row)
     for number, name in enumerate(ORDER, 1):
         ladder = state[name]
         screen.line("")
         screen.row([("bold", "  {}  {:<12}".format(number, name.upper())),
-                    ("plain", "rung {} of 5   reps so far: {}   ".format(ladder["rung"], len(ladder["reps"]))),
+                    ("plain", "rung {} of 5   ".format(ladder["rung"])),
                     ("green", "done this cycle") if done_this_cycle(ladder, day)
                     else ("grey", "not yet this cycle")])
         say(screen, "     ", LADDERS[name]["rungs"][ladder["rung"] - 1])
@@ -228,6 +307,8 @@ def log_rep(screen, day, name):
            "feared: " + feared if feared else "", "feared_happened: " + happened,
            "hard: " + hard, "escaped: " + ("y" if escaped else "n"))
     screen.line("")
+    if not ladder["reps"]:
+        banner(screen, "FIRST {} REP DONE".format(name.upper()))
     screen.line("Logged. That is a rep.", "green")
     if happened == "n":
         screen.line("The feared thing did not happen. That is what this log is for.", "green")
@@ -249,7 +330,11 @@ def set_rung(screen, day, name, rung):
     if rung == load()[name]["rung"]:
         screen.line("{} is already on rung {}.".format(name.capitalize(), rung), "grey")
         return
+    climbed = rung > load()[name]["rung"]
     fl.log(day, "rung", "ladder: " + name, "rung: {}".format(rung))
+    if climbed:
+        celebrate.tune()
+        banner(screen, "{}: UP TO RUNG {}".format(name.upper(), rung))
     say(screen, "{} is now on rung {}: ".format(name.capitalize(), rung),
         LADDERS[name]["rungs"][rung - 1], "green")
 
