@@ -6,6 +6,7 @@ import appts
 import dash
 import focuslib as fl
 import matrix
+import practice
 import routines
 
 HELP = """
@@ -18,6 +19,7 @@ today.py - one page for one day
   MUST         the one task today is for
   PROMISE      (O) pomodoro done, ( ) still promised
   ROUTINES     today's boxes for shower, meals and so on (focus check)
+  PRACTICE     each ladder's rung and this cycle's rep (focus practice)
   DONE SO FAR  each pomodoro and break, in order, with what you said
                you would do and how it went
   NEXT         the note you left yourself for the next pomodoro
@@ -72,6 +74,9 @@ def show(screen, day=None):
 
     for row in routines.rows(day):
         screen.row(row)
+    if fl.on(fl.load_settings(), "ask_practice"):
+        for row in practice.rows(day):
+            screen.row(row)
 
     screen.line("")
     screen.line("  DONE SO FAR", "bold")

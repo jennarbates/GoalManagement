@@ -16,6 +16,7 @@ OTHER COMMANDS
   focus undo      take back a mistake   focus backup    copy to USB stick
   focus check     daily routines (shower, meals ...): tick them off
   focus matrix    the Eisenhower chart, to look at or re-sort
+  focus practice  the uncertainty / failure / conflict ladders
   focus appt      today's fixed things (work, the vet)
   focus reward    your reward menu
   focus report    which questions you answer and which you skip
@@ -123,6 +124,20 @@ CYCLE PLANNING (day 1 of each cycle)
   velocity (points finished per cycle), returns leftovers to the
   backlog, and lets you pull tasks into THIS CYCLE until it is full.
   First cycle: 8 to 10 points.
+
+PRACTICE LADDERS (focus practice)
+  Three ladders - uncertainty, failure, conflict - for one skill:
+  tolerating an outcome you cannot control or do not like. Five rungs
+  each. Aim for one small rep per ladder per cycle.
+    Plan   what you will do, and what you are afraid will happen.
+    Do it  feel the discomfort, do not escape, do the next action.
+    Log    what you did, what you felt, the outcome, whether the feared
+           thing happened, how hard it was, whether you used the escape.
+  Move up only when a rung feels boring; the script offers it after two
+  boring reps in a row. Moving down or skipping a cycle is fine.
+  day.py offers to plan the reps on day 1 of a cycle and asks at the end
+  of each day whether you did one. ask_practice=off stops both.
+  You set the pace. Show this to your therapist.
 
 CHECKING BACK IN WITH CLAUDE
   focus feedback   jot a note about the system the moment it annoys or

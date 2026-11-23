@@ -24,3 +24,4 @@ ask_next=on
 ask_stray=on
 ask_break_note=on
 ask_reward=on
+ask_practice=on

@@ -1,6 +1,7 @@
 # Progress dashboard: reads log.txt and backlog.txt and draws them.
 # Run by itself:  python dash.py     (day.py shows it at the start and end)
 import focuslib as fl
+import practice
 import routines
 
 BAR = 30
@@ -260,6 +261,11 @@ def show(screen, today=None):
                     ("grey", ".."), ("plain", " none   "), ("yellow", "number"),
                     ("plain", " = streak")])
 
+    if fl.on(fl.load_settings(), "ask_practice"):
+        screen.line("")
+        for row in practice.dash_rows(today):
+            screen.row(row)
+
     if by_cycle:
         screen.line("")
         for i, c in enumerate(sorted(by_cycle)[-6:]):
@@ -302,6 +308,8 @@ dash.py - the progress dashboard
   MILESTONES  stars at 1, 5, 10, 25, 50, 75, 100 ... and a bar to the next
   ACTIVITY    cycles across, days down; brighter green = more pomodoros
   ROUTINES    each routine over the last 12 focus days, and its streak
+  PRACTICE    rungs climbed on each ladder, reps, and how often the
+              feared outcome really happened
   VELOCITY    points finished per cycle
   GOALS       points per goal, for tasks tagged like #hsk or #cs311
 """

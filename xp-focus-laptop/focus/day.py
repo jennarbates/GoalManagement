@@ -12,6 +12,7 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import practice
 import report
 import rewards
 import routines
@@ -158,6 +159,11 @@ def plan_cycle(screen, backlog, cycle):
         if pick.isdigit() and 1 <= int(pick) <= len(backlog["BACKLOG - IMPORTANT"]):
             backlog["THIS CYCLE"].append(backlog["BACKLOG - IMPORTANT"].pop(int(pick) - 1))
             fl.save_backlog(backlog)
+
+
+def plan_practice(screen, settings, day):
+    if fl.on(settings, "ask_practice"):
+        practice.cycle_plan(screen, day)
 
 
 def review_cycle(screen, backlog, day, cycle):
@@ -372,6 +378,7 @@ def run(screen, settings):
             appts.ask(screen, day)
         if position == 1:
             plan_cycle(screen, backlog, cycle)
+            plan_practice(screen, settings, day)
         else:
             capture_loop(screen, backlog, "Anything new to capture in the backlog? (Enter = no):")
             matrix.walk(screen, backlog)
@@ -426,6 +433,8 @@ def run(screen, settings):
         screen.line("It stays in DOING for next time.", "grey")
     if fl.load_routines():
         routines.check(screen, day, allow_add=False)
+    if fl.on(settings, "ask_practice"):
+        practice.end_of_day(screen, day)
     sort_parking_lot(screen, backlog)
     if position == fl.CYCLE_DAYS:
         review_cycle(screen, backlog, day, cycle)
@@ -466,6 +475,8 @@ It asks the questions and writes the files for you, in this order:
   7. Stops at the promised number, sorts the parking lot, shows the
      dashboard. Day 7 of a cycle adds a short review.
 
+On day 1 of a cycle it offers to plan one practice rep per ladder, and
+each day ends by asking whether you did one (focus practice).
 The day ends with a reward from your menu (focus reward).
 Questions you always skip can be switched off: see  focus report .
 Enter accepts the suggestion shown in brackets.

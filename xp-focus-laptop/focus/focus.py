@@ -15,6 +15,7 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import practice
 import report
 import rewards
 import routines
@@ -32,6 +33,7 @@ COMMANDS = {
     "celebrate": celebrate.main, "check": routines.main,
     "appt": appts.main, "reward": rewards.main, "report": report.main,
     "diagnose": diagnose.main, "feedback": diagnose.feedback_main,
+    "practice": practice.main,
 }
 
 
