@@ -1,0 +1,4 @@
+# Daily routines, one per line. Add x3 for three times a day.
+# Tick them with:  focus check
+shower
+eat a meal x3

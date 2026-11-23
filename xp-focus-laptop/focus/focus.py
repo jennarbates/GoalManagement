@@ -12,6 +12,7 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import routines
 import today
 import undo
 
@@ -23,7 +24,7 @@ COMMANDS = {
     "day": day.main, "dash": dash.main, "summary": dash.summary_main,
     "pomo": pomo.main, "points": points.main, "undo": undo.main,
     "backup": backup.main, "matrix": matrix.main, "today": today.main,
-    "celebrate": celebrate.main,
+    "celebrate": celebrate.main, "check": routines.main,
 }
 
 

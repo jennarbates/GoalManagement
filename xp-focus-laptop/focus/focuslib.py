@@ -146,6 +146,7 @@ All commands (type them in the Cygwin terminal):
   focus              the guided day: plan, pomodoros, breaks, log, dashboard
   focus today        one page for today: the MUST, what is done, what is left
   focus dash         the big-picture dashboard
+  focus check        daily routines (shower, meals ...): tick them off
   focus matrix       the Eisenhower chart: see and re-sort your tasks
   focus summary      one-screen recap of a cycle (focus summary 2 = cycle 2)
   focus pomo         the timer only
@@ -157,7 +158,8 @@ All commands (type them in the Cygwin terminal):
   focus help         this list.   focus dash --help etc. for details.
 If "focus" is not set up yet:  python C:/focus/focus.py
 
-Files:  backlog.txt (tasks)   park.txt (stray thoughts)   log.txt (history)
+Files:  backlog.txt (tasks)   routines.txt (daily routines)
+        park.txt (stray thoughts)   log.txt (history)
         today.txt (today's plan)   settings.txt (options)   SYSTEM.txt (guide)
 """
 
@@ -289,6 +291,8 @@ def read_log():
         if not match:
             continue
         day, kind, rest = int(match.group(1)), match.group(2), match.group(3)
+        if kind == "tick":
+            continue
         info = days.setdefault(day, {"planned": None, "did": None, "focus": [],
                                      "away": [], "points": None, "energy": None})
         if kind == "start":
@@ -350,6 +354,34 @@ def day_events(day):
                 fields[key] = value
         events.append((parts[0], fields))
     return events
+
+
+# ----------------------------------------------------------------- routines
+
+def load_routines():
+    """[(name, times a day)] from routines.txt."""
+    routines = []
+    for line in read_lines("routines.txt"):
+        line = clean(line)
+        if not line or line.startswith("#"):
+            continue
+        match = re.match(r"^(.*?)\s+x\s*(\d+)$", line, re.I)
+        if match and int(match.group(2)) > 0:
+            routines.append((match.group(1), min(9, int(match.group(2)))))
+        else:
+            routines.append((line, 1))
+    return routines
+
+
+def read_ticks():
+    """{day: {routine name: boxes ticked}} from the log."""
+    ticks = {}
+    for line in read_lines("log.txt"):
+        match = re.match(r"^D(\d+) \| tick \| (.+)$", line.strip())
+        if match:
+            day = ticks.setdefault(int(match.group(1)), {})
+            day[match.group(2)] = day.get(match.group(2), 0) + 1
+    return ticks
 
 
 def cycle_of(day):

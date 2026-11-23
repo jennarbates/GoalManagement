@@ -49,6 +49,8 @@ def progress():
         "days": [dict(info, day=day) for day, info in days.items()],
         "done": done,
         "open": dict((name, backlog[name]) for name in fl.SECTIONS[:-1]),
+        "routines": [{"name": name, "times": times} for name, times in fl.load_routines()],
+        "ticks": dict((str(day), ticked) for day, ticked in fl.read_ticks().items()),
         "totals": {
             "focus_days": len(days),
             "pomodoros": sum(len(info["focus"]) for info in days.values()),

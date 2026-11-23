@@ -1,6 +1,7 @@
 # Progress dashboard: reads log.txt and backlog.txt and draws them.
 # Run by itself:  python dash.py     (day.py shows it at the start and end)
 import focuslib as fl
+import routines
 
 BAR = 30
 WALL_COLOR = {3: "green", 2: "yellow", 1: "red"}
@@ -231,7 +232,7 @@ def show(screen, today=None):
     screen.row([label("BREAKS")] + bar(len([a for a in away if a]), len(away), 14) +
                [("plain", "  stepped away {} of {}".format(len([a for a in away if a]), len(away)))])
 
-    levels = [d["energy"] for d in days.values() if d["energy"]][-14:]
+    levels = [d["energy"] for d in days.values() if d["energy"]][-10:]
     if levels:
         looks = {1: ("on_cyan", "__"), 2: ("on_yellow", "=="), 3: ("on_green", "##")}
         cells = [label("ENERGY")]
@@ -248,6 +249,16 @@ def show(screen, today=None):
     show_milestones(screen, len(focus))
     screen.line("")
     show_activity(screen, days, cycle)
+
+    routine_rows = routines.grid_rows(days, today)
+    if routine_rows:
+        screen.line("")
+        for row in routine_rows:
+            screen.row(row)
+        screen.row([label(""), ("grey", "{:<12}".format("12 days")), ("on_green", "##"),
+                    ("plain", " all  "), ("on_yellow", "=="), ("plain", " some  "),
+                    ("grey", ".."), ("plain", " none   "), ("yellow", "number"),
+                    ("plain", " = streak")])
 
     if by_cycle:
         screen.line("")
@@ -285,11 +296,12 @@ dash.py - the progress dashboard
   THIS CYCLE  points finished out of points planned
   PROMISES    days where you did exactly what you planned
   BREAKS      breaks where you really stepped away
-  ENERGY      your last 14 check-ins
+  ENERGY      your last 10 check-ins
   PARKED      stray thoughts waiting in park.txt
   POMODOROS   the wall: one o each, green focused, yellow okay, red scattered
   MILESTONES  stars at 1, 5, 10, 25, 50, 75, 100 ... and a bar to the next
   ACTIVITY    cycles across, days down; brighter green = more pomodoros
+  ROUTINES    each routine over the last 12 focus days, and its streak
   VELOCITY    points finished per cycle
   GOALS       points per goal, for tasks tagged like #hsk or #cs311
 """

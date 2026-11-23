@@ -14,6 +14,7 @@ OTHER COMMANDS
   focus dash      dashboard only        focus summary   recap of a cycle
   focus pomo      timer only            focus points    size one task
   focus undo      take back a mistake   focus backup    copy to USB stick
+  focus check     daily routines (shower, meals ...): tick them off
   focus matrix    the Eisenhower chart, to look at or re-sort
   focus sync      pull notes from the PSPi into the parking lot
   focus help      list of commands      (add --help to any for details)
@@ -64,6 +65,13 @@ HELPERS BUILT IN
   PSPi notes    On the PSPi type  note buy stamps . Later, with the PSPi
                 plugged in,  focus sync  moves the notes into park.txt.
                 Setup steps are in pspi\README.txt.
+  Routines      Things that recur every day (shower, meals, meds) are NOT
+                tasks. List them in routines.txt, one per line; add x3 for
+                three times a day. Tick them with  focus check , or when
+                day.py shows the list at the start and end of the day.
+                Boxes start empty again on each new focus day.
+                Each routine shows its streak: focus days in a row on
+                which it was fully done, and your best so far.
   Pick for me   When choosing the MUST is too much, type p. It takes the
                 top item.
 
@@ -118,5 +126,6 @@ FILES (all in C:\focus)
   log.txt      everything that happened (written for you)
   today.txt    today's plan and NEXT note (written for you)
   park.txt     parking lot for stray thoughts
+  routines.txt daily routines and how many times a day
   settings.txt timer style and lengths, screen width
   Keep the section names in backlog.txt exactly as they are.

@@ -5,6 +5,7 @@ import sys
 import dash
 import focuslib as fl
 import matrix
+import routines
 
 HELP = """
 today.py - one page for one day
@@ -14,6 +15,7 @@ today.py - one page for one day
 
   MUST         the one task today is for
   PROMISE      (O) pomodoro done, ( ) still promised
+  ROUTINES     today's boxes for shower, meals and so on (focus check)
   DONE SO FAR  each pomodoro and break, in order, with what you said
                you would do and how it went
   NEXT         the note you left yourself for the next pomodoro
@@ -60,6 +62,9 @@ def show(screen, day=None):
                [("plain", "  {} of {} pomodoros".format(min(done, planned), planned))])
     if start.get("energy") in ENERGY:
         screen.row([dash.label("ENERGY"), ("plain", ENERGY[start["energy"]])])
+
+    for row in routines.rows(day):
+        screen.row(row)
 
     screen.line("")
     screen.line("  DONE SO FAR", "bold")

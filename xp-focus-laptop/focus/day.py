@@ -9,6 +9,7 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import routines
 import today
 
 
@@ -39,6 +40,33 @@ def show_items(screen, lines):
 
 # ------------------------------------------------------------ adding tasks
 
+def categories(backlog):
+    """Category words already used in the backlog, in alphabetical order."""
+    counts = {}
+    for section in fl.SECTIONS:
+        for line in backlog[section]:
+            for tag in fl.parse_item(line)["tags"]:
+                counts[tag] = counts.get(tag, 0) + 1
+    return sorted(counts)
+
+
+def ask_category(screen, backlog):
+    """Pick an existing category by number, type a new one, or skip."""
+    known = categories(backlog)
+    if known:
+        screen.line("  Your categories:", "bold")
+        for start in range(0, len(known), 4):
+            screen.line("    " + "".join("{:>2} {:<15}".format(i + 1, known[i][:15])
+                                         for i in range(start, min(start + 4, len(known)))))
+        answer = fl.ask(screen, "  Category - a number, a new word, or Enter for none:")
+    else:
+        answer = fl.ask(screen, "  Category? One word like hsk or cs311 (Enter = none):")
+    if answer.isdigit() and 1 <= int(answer) <= len(known):
+        return known[int(answer) - 1]
+    words = answer.lstrip("#").split()
+    return words[0].lower() if words else ""
+
+
 def capture(screen, backlog, text):
     """Sort one new task with the Eisenhower questions, size it, file it."""
     urgent = fl.ask_yes(screen, "  Is it urgent (a real deadline soon)?", False)
@@ -49,10 +77,10 @@ def capture(screen, backlog, text):
     size = points.estimate(screen)
     if size == 8:
         screen.line("  8 points is too big to finish. Add it, but split it before starting.", "yellow")
-    tag = fl.ask(screen, "  Which goal is it for? One word like hsk or cs311 (Enter = none):")
+    tag = ask_category(screen, backlog)
     line = "[{}] {}".format(size, text)
     if tag:
-        line += " #" + tag.lstrip("#").split()[0].lower()
+        line += " #" + tag
     if urgent:
         screen.line("  Deadlines count focus days (days you run this), not calendar days.", "grey")
         due = fl.ask(screen, "  Due in how many focus days? (Enter = no deadline):")
@@ -348,6 +376,10 @@ def run(screen, settings):
         fl.log(day, "start", "plan {}".format(planned), "energy {}".format(energy), "must: " + must,
                "workbook: " + workbook if workbook else "")
         done = 0
+        if fl.load_routines():
+            screen.line("")
+            screen.line("Tick any routine you have already done today.", "grey")
+            routines.check(screen, day, allow_add=False)
 
     run_pomodoros(screen, settings, day, planned, done + 1, must, workbook)
 
@@ -365,6 +397,8 @@ def run(screen, settings):
         screen.line("Moved to DONE.", "green")
     elif must:
         screen.line("It stays in DOING for next time.", "grey")
+    if fl.load_routines():
+        routines.check(screen, day, allow_add=False)
     sort_parking_lot(screen, backlog)
     if position == fl.CYCLE_DAYS:
         review_cycle(screen, backlog, day, cycle)
@@ -390,6 +424,8 @@ It asks the questions and writes the files for you, in this order:
      number to re-sort one, or Enter if the chart is right.
   3. Today's MUST (a number, p = pick for me, or type a new task).
   4. Energy 1-3, then how many pomodoros you promise.
+     Then the routines checklist (shower, meals ...): tick what is done.
+     It comes back at the end of the day.
   5. Each pomodoro: what you will do, the first two-minute action,
      the timer, then how it went (3 focused, 2 okay, 1 scattered,
      0 abandoned = does not count), a NEXT note, a stray thought to park.
