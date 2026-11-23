@@ -2,6 +2,7 @@
 # Run:  focus today      (focus today 3 shows day D3)
 import sys
 
+import appts
 import dash
 import focuslib as fl
 import matrix
@@ -13,6 +14,7 @@ today.py - one page for one day
   focus today          the current (or most recent) day
   focus today 3        day D3
 
+  FIXED TODAY  appointments and other fixed times (focus appt)
   MUST         the one task today is for
   PROMISE      (O) pomodoro done, ( ) still promised
   ROUTINES     today's boxes for shower, meals and so on (focus check)
@@ -54,6 +56,11 @@ def show(screen, day=None):
     screen.line(title, "bold")
     screen.line("")
 
+    fixed = appts.rows(day)
+    for row in fixed:
+        screen.row(row)
+    if fixed:
+        screen.line("")
     must = start.get("must", "")
     finished = "D{} | {}".format(day, must) in backlog["DONE"]
     screen.row([dash.label("MUST"), ("bold", matrix.strip_box(must)[:58] or "-"),

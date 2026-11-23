@@ -147,6 +147,9 @@ All commands (type them in the Cygwin terminal):
   focus today        one page for today: the MUST, what is done, what is left
   focus dash         the big-picture dashboard
   focus check        daily routines (shower, meals ...): tick them off
+  focus appt         today's fixed things (work, the vet): see and add
+  focus reward       your reward menu: see it, add to it, roll one
+  focus report       which questions you answer and which you skip
   focus matrix       the Eisenhower chart: see and re-sort your tasks
   focus summary      one-screen recap of a cycle (focus summary 2 = cycle 2)
   focus pomo         the timer only
@@ -158,7 +161,7 @@ All commands (type them in the Cygwin terminal):
   focus help         this list.   focus dash --help etc. for details.
 If "focus" is not set up yet:  python C:/focus/focus.py
 
-Files:  backlog.txt (tasks)   routines.txt (daily routines)
+Files:  backlog.txt (tasks)   routines.txt (daily routines)   rewards.txt
         park.txt (stray thoughts)   log.txt (history)
         today.txt (today's plan)   settings.txt (options)   SYSTEM.txt (guide)
 """
@@ -291,7 +294,7 @@ def read_log():
         if not match:
             continue
         day, kind, rest = int(match.group(1)), match.group(2), match.group(3)
-        if kind == "tick":
+        if kind in ("tick", "appt", "reward"):
             continue
         info = days.setdefault(day, {"planned": None, "did": None, "focus": [],
                                      "away": [], "points": None, "energy": None})
@@ -371,6 +374,21 @@ def load_routines():
         else:
             routines.append((line, 1))
     return routines
+
+
+def read_appts():
+    """{day: [appointment text, ...]} from the log."""
+    appts = {}
+    for line in read_lines("log.txt"):
+        match = re.match(r"^D(\d+) \| appt \| (.+)$", line.strip())
+        if match:
+            appts.setdefault(int(match.group(1)), []).append(match.group(2))
+    return appts
+
+
+def on(settings, key):
+    """True unless settings.txt says key=off."""
+    return str(settings.get(key, "on")).strip().lower() != "off"
 
 
 def read_ticks():

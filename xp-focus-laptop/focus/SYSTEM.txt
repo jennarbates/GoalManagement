@@ -16,6 +16,9 @@ OTHER COMMANDS
   focus undo      take back a mistake   focus backup    copy to USB stick
   focus check     daily routines (shower, meals ...): tick them off
   focus matrix    the Eisenhower chart, to look at or re-sort
+  focus appt      today's fixed things (work, the vet)
+  focus reward    your reward menu
+  focus report    which questions you answer and which you skip
   focus sync      pull notes from the PSPi into the parking lot
   focus help      list of commands      (add --help to any for details)
 
@@ -72,6 +75,15 @@ HELPERS BUILT IN
                 Boxes start empty again on each new focus day.
                 Each routine shows its streak: focus days in a row on
                 which it was fully done, and your best so far.
+  Appointments  Every day it asks for anything fixed with a time (a work
+                shift, the vet). They show at the top of the day page and
+                above each pomodoro. They are not tasks. The laptop has no
+                clock, so set a phone alarm for each.
+  Rewards       rewards.txt is a list of things you enjoy. When the day's
+                promise is kept, one is suggested at random.
+  Report        focus report counts which optional questions you answer
+                and which you skip, and names the settings.txt line that
+                switches a skipped one off (for example ask_first=off).
   Pick for me   When choosing the MUST is too much, type p. It takes the
                 top item.
 
@@ -127,5 +139,6 @@ FILES (all in C:\focus)
   today.txt    today's plan and NEXT note (written for you)
   park.txt     parking lot for stray thoughts
   routines.txt daily routines and how many times a day
+  rewards.txt  your reward menu
   settings.txt timer style and lengths, screen width
   Keep the section names in backlog.txt exactly as they are.

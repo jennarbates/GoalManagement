@@ -1,0 +1,2 @@
+# Reward menu: one thing you enjoy per line. day.py suggests one when the
+# day's promise is kept. Add your own here or with:  focus reward

@@ -14,3 +14,13 @@ long=15
 width=78
 # display: auto, ansi or plain (plain = no colours, if you see codes like [32m)
 display=auto
+# Optional questions in the guided day: on or off.
+# "focus report" shows which ones you answer and which you skip.
+ask_workbook=on
+ask_appointments=on
+ask_first=on
+ask_note=on
+ask_next=on
+ask_stray=on
+ask_break_note=on
+ask_reward=on

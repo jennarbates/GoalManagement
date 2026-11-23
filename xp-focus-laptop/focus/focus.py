@@ -4,6 +4,7 @@
 # then close and reopen the terminal.
 import sys
 
+import appts
 import backup
 import celebrate
 import dash
@@ -12,6 +13,8 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import report
+import rewards
 import routines
 import today
 import undo
@@ -25,6 +28,7 @@ COMMANDS = {
     "pomo": pomo.main, "points": points.main, "undo": undo.main,
     "backup": backup.main, "matrix": matrix.main, "today": today.main,
     "celebrate": celebrate.main, "check": routines.main,
+    "appt": appts.main, "reward": rewards.main, "report": report.main,
 }
 
 

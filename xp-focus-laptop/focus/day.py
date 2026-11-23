@@ -2,6 +2,7 @@
 # Run in the Cygwin terminal:
 #     cd /cygdrive/c/focus
 #     python day.py
+import appts
 import backup
 import celebrate
 import dash
@@ -9,6 +10,8 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import report
+import rewards
 import routines
 import today
 
@@ -160,6 +163,7 @@ def review_cycle(screen, backlog, day, cycle):
     total = fl.done_points_by_cycle(backlog).get(cycle, 0)
     dash.banner(screen, "CYCLE {} COMPLETE - {} POINTS".format(cycle, total))
     dash.show_summary(screen, cycle)
+    report.show(screen, cycle)
     blocked = fl.ask(screen, "What got in the way?")
     change = fl.ask(screen, "One thing to change next cycle?")
     fl.log(day, "review", "CYCLE {} DONE - {} points".format(cycle, total),
@@ -271,9 +275,13 @@ def run_pomodoros(screen, settings, day, planned, first, must, workbook):
     n = first
     while n <= planned:
         heading(screen, "POMODORO {} of {}".format(n, planned))
+        if appts.one_line(day):
+            screen.line("  " + appts.one_line(day)[:76], "cyan")
         screen.row([("bold", "  TODAY  ")] + dash.today_row(n - 1, planned))
         intent = fl.ask_required(screen, "What exactly will you do in this one?")
-        first = fl.ask(screen, "The first two-minute action? (Enter to skip):")
+        first = ""
+        if fl.on(settings, "ask_first"):
+            first = fl.ask(screen, "The first two-minute action? (Enter to skip):")
         showing = "{}   (first: {})".format(intent, first) if first else intent
         screen.line("Stray thought mid-way? Type it into park.txt in Notepad++ and carry on.", "grey")
         fl.ask(screen, "Press Enter to start. One task only until the beep.")
@@ -289,16 +297,21 @@ def run_pomodoros(screen, settings, day, planned, first, must, workbook):
             fl.log(day, "abandoned", "pomo {}".format(n), "intent: " + intent)
             screen.line("That one does not count. No penalty - start it again.", "yellow")
             continue
-        note = fl.ask(screen, "One line on how it went (Enter to skip):")
-        next_note = fl.ask(screen, "NEXT - what were you about to do? (Enter to skip):")
-        fl.log(day, "pomo {}".format(n), "focus {}".format(focus), "intent: " + intent,
-               "first: " + first if first else "",
-               "note: " + note if note else "", "next: " + next_note if next_note else "")
-        if next_note:
-            write_today(day, workbook, planned, must, next_note)
-        stray = fl.ask(screen, "Any stray thought to park for later? (Enter = none):")
+        note = next_note = stray = ""
+        if fl.on(settings, "ask_note"):
+            note = fl.ask(screen, "One line on how it went (Enter to skip):")
+        if fl.on(settings, "ask_next"):
+            next_note = fl.ask(screen, "NEXT - what were you about to do? (Enter to skip):")
+        if fl.on(settings, "ask_stray"):
+            stray = fl.ask(screen, "Any stray thought to park for later? (Enter = none):")
         if stray:
             fl.park(stray)
+        fl.log(day, "pomo {}".format(n), "focus {}".format(focus), "intent: " + intent,
+               "first: " + first if first else "",
+               "note: " + note if note else "", "next: " + next_note if next_note else "",
+               "parked: yes" if stray else "")
+        if next_note:
+            write_today(day, workbook, planned, must, next_note)
         screen.row([("bold", "  TODAY  ")] + dash.today_row(n, planned))
         total = dash.total_pomodoros()
         if total in dash.MILESTONES:
@@ -315,7 +328,9 @@ def run_pomodoros(screen, settings, day, planned, first, must, workbook):
                      "BREAK", plan, "break", style, width)
             screen.clear()
             away = fl.ask_yes(screen, "Break over. Did you actually step away from the laptop?")
-            rest = fl.ask(screen, "How was the break? (Enter to skip):")
+            rest = ""
+            if fl.on(settings, "ask_break_note"):
+                rest = fl.ask(screen, "How was the break? (Enter to skip):")
             fl.log(day, "break {}".format(n), "away {}".format("y" if away else "n"),
                    "intent: " + plan, "note: " + rest if rest else "")
         n += 1
@@ -344,7 +359,11 @@ def run(screen, settings):
         workbook = ""
         screen.line("Continuing D{}: {} of {} pomodoros done.".format(day, done, planned))
     else:
-        workbook = fl.ask(screen, "Which workbook day or page are you on? (Enter to skip):")
+        workbook = ""
+        if fl.on(settings, "ask_workbook"):
+            workbook = fl.ask(screen, "Which workbook day or page are you on? (Enter to skip):")
+        if fl.on(settings, "ask_appointments"):
+            appts.ask(screen, day)
         if position == 1:
             plan_cycle(screen, backlog, cycle)
         else:
@@ -406,6 +425,8 @@ def run(screen, settings):
     today.show(screen, day)
     fl.ask(screen, "That was today. Press Enter for the big picture.")
     dash.show(screen, day)
+    if fl.on(settings, "ask_reward"):
+        rewards.offer(screen, day)
     screen.line("That is the day. Close the laptop.", "bold")
 
 
@@ -422,6 +443,8 @@ It asks the questions and writes the files for you, in this order:
      for the backlog?
      Then the Eisenhower chart: every open task in its box. Type a
      number to re-sort one, or Enter if the chart is right.
+     Before that, on every day: anything fixed today, with its time
+     (a work shift, the vet). Those show at the top of the day page.
   3. Today's MUST (a number, p = pick for me, or type a new task).
   4. Energy 1-3, then how many pomodoros you promise.
      Then the routines checklist (shower, meals ...): tick what is done.
@@ -434,6 +457,8 @@ It asks the questions and writes the files for you, in this order:
   7. Stops at the promised number, sorts the parking lot, shows the
      dashboard. Day 7 of a cycle adds a short review.
 
+The day ends with a reward from your menu (focus reward).
+Questions you always skip can be switched off: see  focus report .
 Enter accepts the suggestion shown in brackets.
 Ctrl+C stops; run it again and it offers to continue the same day.
 """
