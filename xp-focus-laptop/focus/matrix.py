@@ -1,6 +1,7 @@
 # The Eisenhower chart: every open task in one of four boxes.
 # Run:  focus matrix      (day.py walks through it every day)
 import re
+import textwrap
 
 import focuslib as fl
 
@@ -14,14 +15,15 @@ Draws your open tasks in four boxes:
   2 important, not urgent   SCHEDULE     (the real work - protect it)
   3 urgent, not important   MINIMISE
   4 neither                 DROP         (nothing is kept here)
+Every task is shown, and long ones wrap onto extra lines. If the chart
+is taller than the window, scroll up with Shift+PageUp, or make the
+window bigger and raise  width  in settings.txt for wider boxes.
 Type a task's number to re-sort it: it asks "urgent?" and "important?"
 again and moves the task. Enter leaves the chart as it is.
 A task's box is stored at the end of its line in backlog.txt, like (B2).
 """
 
 OPEN = ["DOING", "THIS CYCLE", "BACKLOG - IMPORTANT", "BACKLOG - SOMEDAY"]
-CELL = 34
-ROWS = 6
 TITLES = {1: ("red", "1 DO FIRST"), 2: ("green", "2 SCHEDULE - the real work"),
           3: ("yellow", "3 MINIMISE"), 4: ("grey", "4 DROP")}
 
@@ -54,34 +56,38 @@ def collect(backlog):
     return items
 
 
-def _cell(text, color="plain"):
-    return (color, " {:<{}}".format(text[:CELL - 1], CELL - 1))
+def _cell(text, cell, color="plain"):
+    return (color, " {:<{}}".format(text[:cell - 1], cell - 1))
 
 
-def _box_rows(items, box):
-    mine = [item for item in items if item["box"] == box]
-    rows = [_cell(TITLES[box][1], TITLES[box][0])]
-    for item in mine[:ROWS]:
-        rows.append(_cell("{:>2}. {}".format(item["number"], strip_box(item["line"]))))
-    if len(mine) > ROWS:
-        rows.append(_cell("    + {} more".format(len(mine) - ROWS), "grey"))
+def _box_rows(items, box, cell):
+    """Every task in the box. Long tasks wrap onto extra lines; none are hidden."""
+    rows = [_cell(TITLES[box][1], cell, TITLES[box][0])]
+    for item in items:
+        if item["box"] != box:
+            continue
+        lines = textwrap.wrap(strip_box(item["line"]), cell - 6) or [""]
+        rows.append(_cell("{:>2}. {}".format(item["number"], lines[0]), cell))
+        for more in lines[1:]:
+            rows.append(_cell("    " + more, cell))
     if box == 4:
-        rows.append(_cell("    (nothing is kept here)", "grey"))
+        rows.append(_cell("    (nothing is kept here)", cell, "grey"))
     return rows
 
 
-def draw(screen, items):
-    edge = [("plain", "      +" + "-" * CELL + "+" + "-" * CELL + "+")]
+def draw(screen, items, width=78):
+    cell = max(30, (width - 9) // 2)
+    edge = [("plain", "      +" + "-" * cell + "+" + "-" * cell + "+")]
     screen.line("")
-    screen.row([("bold", "       {:<{}} {}".format("URGENT", CELL, "NOT URGENT"))])
+    screen.row([("bold", "       {:<{}} {}".format("URGENT", cell, "NOT URGENT"))])
     for left, right, side in ((1, 2, ("IMPOR", "TANT")), (3, 4, ("NOT", "IMP."))):
         screen.row(edge)
-        a, b = _box_rows(items, left), _box_rows(items, right)
+        a, b = _box_rows(items, left, cell), _box_rows(items, right, cell)
         for i in range(max(len(a), len(b), 3)):
             label = side[i] if i < len(side) else ""
             screen.row([("bold", " {:<5}".format(label)), ("plain", "|"),
-                        a[i] if i < len(a) else _cell(""), ("plain", "|"),
-                        b[i] if i < len(b) else _cell(""), ("plain", "|")])
+                        a[i] if i < len(a) else _cell("", cell), ("plain", "|"),
+                        b[i] if i < len(b) else _cell("", cell), ("plain", "|")])
     screen.row(edge)
     screen.flush()
 
@@ -122,9 +128,10 @@ def walk(screen, backlog):
     """Show the chart, let the user fix anything in the wrong box, then advise."""
     screen.line("")
     screen.line("== EISENHOWER CHART ==", "yellow")
+    width = int(fl.number(fl.load_settings(), "width", 78))
     while True:
         items = collect(backlog)
-        draw(screen, items)
+        draw(screen, items, width)
         if not items:
             screen.line("  No open tasks yet.", "grey")
             return
