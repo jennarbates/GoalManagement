@@ -3,12 +3,14 @@
 #     echo "alias focus='python C:/focus/focus.py'" >> ~/.bashrc
 # then close and reopen the terminal.
 import sys
+import traceback
 
 import appts
 import backup
 import celebrate
 import dash
 import day
+import diagnose
 import focuslib as fl
 import matrix
 import points
@@ -29,6 +31,7 @@ COMMANDS = {
     "backup": backup.main, "matrix": matrix.main, "today": today.main,
     "celebrate": celebrate.main, "check": routines.main,
     "appt": appts.main, "reward": rewards.main, "report": report.main,
+    "diagnose": diagnose.main, "feedback": diagnose.feedback_main,
 }
 
 
@@ -53,6 +56,24 @@ def inbox(filename):
 
 
 def main():
+    """Run the command; record it, and save any crash to errors.txt."""
+    name = sys.argv[1].lower() if len(sys.argv) > 1 else "day"
+    if name not in ("inbox", "help", "--help", "-h", "/?"):
+        fl.append_line("usage.txt", "D{} {}".format(fl.current_day(), name))
+    try:
+        dispatch()
+    except (KeyboardInterrupt, EOFError, SystemExit):
+        raise
+    except Exception:
+        fl.append_line("errors.txt", "--- D{} | focus {} | version {} | python {}".format(
+            fl.current_day(), " ".join(sys.argv[1:]), fl.VERSION, sys.version.split()[0]))
+        fl.append_line("errors.txt", traceback.format_exc().rstrip())
+        sys.stdout.write("\033[0m\n\nSomething went wrong inside the script (a bug, not you).\n"
+                         "The details are saved in errors.txt - show that file to Claude.\n"
+                         "Everything you had already answered is saved. Try  focus  again.\n")
+
+
+def dispatch():
     args = sys.argv[1:]
     if not args:
         day.main()

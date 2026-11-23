@@ -3,6 +3,8 @@
 #     cd /cygdrive/c/focus
 #     python day.py
 import appts
+import time
+
 import backup
 import celebrate
 import dash
@@ -166,6 +168,9 @@ def review_cycle(screen, backlog, day, cycle):
     report.show(screen, cycle)
     blocked = fl.ask(screen, "What got in the way?")
     change = fl.ask(screen, "One thing to change next cycle?")
+    about = fl.ask(screen, "Anything about this system itself to fix or change? (saved for Claude):")
+    if about:
+        fl.feedback(about)
     fl.log(day, "review", "CYCLE {} DONE - {} points".format(cycle, total),
            "blocked: " + blocked if blocked else "", "change: " + change if change else "")
     if fl.ask_yes(screen, "Back up C:\\focus to the USB stick now?"):
@@ -337,6 +342,7 @@ def run_pomodoros(screen, settings, day, planned, first, must, workbook):
 
 
 def run(screen, settings):
+    started = time.time()
     screen.clear()
     days = fl.read_log()
     backlog = fl.load_backlog()
@@ -400,6 +406,8 @@ def run(screen, settings):
             screen.line("Tick any routine you have already done today.", "grey")
             routines.check(screen, day, allow_add=False)
 
+    if not resumed:
+        fl.log(day, "timing", "setup {}".format(int(time.time() - started)))
     run_pomodoros(screen, settings, day, planned, done + 1, must, workbook)
 
     heading(screen, "DONE FOR TODAY")
@@ -427,6 +435,7 @@ def run(screen, settings):
     dash.show(screen, day)
     if fl.on(settings, "ask_reward"):
         rewards.offer(screen, day)
+    fl.log(day, "timing", "run {}".format(int(time.time() - started)))
     screen.line("That is the day. Close the laptop.", "bold")
 
 

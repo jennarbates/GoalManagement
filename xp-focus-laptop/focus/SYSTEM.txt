@@ -124,6 +124,15 @@ CYCLE PLANNING (day 1 of each cycle)
   backlog, and lets you pull tasks into THIS CYCLE until it is full.
   First cycle: 8 to 10 points.
 
+CHECKING BACK IN WITH CLAUDE
+  focus feedback   jot a note about the system the moment it annoys or
+                   helps you. It goes into feedback.txt.
+  focus diagnose   writes diagnose.txt: version, settings, numbers, which
+                   commands you run, which questions you skip, any
+                   crashes, your feedback, and the recent log.
+  If the script ever crashes, the details go to errors.txt by themselves.
+  Then  focus backup , and bring the USB stick to the Mac.
+
 RULES
   - A promise is about time. "Planned 2, did 2" is a win even if the
     task is not finished.

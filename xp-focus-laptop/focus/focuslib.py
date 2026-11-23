@@ -17,6 +17,7 @@ except ImportError:
     winsound = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+VERSION = "2026-11-23d"      # change this whenever the scripts change
 SECTIONS = ["DOING", "THIS CYCLE", "BACKLOG - IMPORTANT", "BACKLOG - SOMEDAY", "DONE"]
 HEADERS = {"DOING": "DOING (max 1)", "THIS CYCLE": "THIS CYCLE"}
 CYCLE_DAYS = 7
@@ -150,6 +151,8 @@ All commands (type them in the Cygwin terminal):
   focus appt         today's fixed things (work, the vet): see and add
   focus reward       your reward menu: see it, add to it, roll one
   focus report       which questions you answer and which you skip
+  focus feedback     jot a note about the system itself for Claude
+  focus diagnose     write diagnose.txt: a check-up to bring back to Claude
   focus matrix       the Eisenhower chart: see and re-sort your tasks
   focus summary      one-screen recap of a cycle (focus summary 2 = cycle 2)
   focus pomo         the timer only
@@ -294,7 +297,7 @@ def read_log():
         if not match:
             continue
         day, kind, rest = int(match.group(1)), match.group(2), match.group(3)
-        if kind in ("tick", "appt", "reward"):
+        if kind in ("tick", "appt", "reward", "timing"):
             continue
         info = days.setdefault(day, {"planned": None, "did": None, "focus": [],
                                      "away": [], "points": None, "energy": None})
@@ -374,6 +377,30 @@ def load_routines():
         else:
             routines.append((line, 1))
     return routines
+
+
+def append_line(name, text):
+    """Add one line to a text file in the focus folder. Never raises."""
+    try:
+        with open(path(name), "a", encoding="utf-8", newline="\r\n") as handle:
+            handle.write(text + "\n")
+    except (IOError, OSError):
+        pass
+
+
+def current_day():
+    """The latest focus day in the log, or 0 before the first one."""
+    latest = 0
+    for line in read_lines("log.txt"):
+        match = re.match(r"^D(\d+) \| ", line)
+        if match:
+            latest = max(latest, int(match.group(1)))
+    return latest
+
+
+def feedback(text):
+    """Save a note about the system itself for the next check-in."""
+    append_line("feedback.txt", "D{} | {}".format(current_day(), clean(text)))
 
 
 def read_appts():
