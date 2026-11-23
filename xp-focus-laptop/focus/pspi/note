@@ -1,0 +1,21 @@
+#!/bin/sh
+# note - save a thought on the PSPi for the focus laptop to collect later.
+#   note buy stamps        save one line
+#   note                   asks for the line
+#   note -l                list what is waiting
+INBOX="$HOME/focus-inbox.txt"
+touch "$INBOX"
+if [ "$1" = "-l" ]; then
+    cat -n "$INBOX"
+    exit 0
+fi
+if [ $# -eq 0 ]; then
+    printf 'Note: '
+    read -r text
+else
+    text="$*"
+fi
+if [ -n "$text" ]; then
+    printf '%s\n' "$text" >> "$INBOX"
+    echo "Saved. $(wc -l < "$INBOX" | tr -d ' ') waiting for the laptop."
+fi

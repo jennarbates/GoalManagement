@@ -1,0 +1,14 @@
+DOING (max 1)
+
+THIS CYCLE
+
+BACKLOG - IMPORTANT
+[2] re-solve one LeetCode problem #cs311
+[2] write 5 sentences with this week's HSK words #hsk
+[1] Notepad++ colour rules for these txt files
+[2] change the colours or the art in pomo.py
+[3] add a new chart to dash.py
+
+BACKLOG - SOMEDAY
+
+DONE

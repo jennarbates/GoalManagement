@@ -1,0 +1,16 @@
+# Timer look: hourglass, ball, or rotate (swaps each day)
+style=hourglass
+# Work colour: rotate (changes each day) or fixed (always yellow)
+colours=rotate
+# One soft beep halfway through each pomodoro: on or off
+chime=on
+# Confetti and a tune when a day's promise is kept: on or off
+celebrate=on
+# Minutes
+work=25
+short=5
+long=15
+# Screen width in characters (make the Cygwin window wider, then raise this)
+width=78
+# display: auto, ansi or plain (plain = no colours, if you see codes like [32m)
+display=auto

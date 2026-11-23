@@ -1,0 +1,122 @@
+MY FOCUS SYSTEM - one page
+==========================
+
+ONE-TIME SETUP (in the Cygwin terminal)
+      echo "alias focus='python C:/focus/focus.py'" >> ~/.bashrc
+  Close and reopen the terminal. From then on, from any folder:
+
+TO START A DAY
+      focus
+  Then follow it. It asks the questions and writes the files.
+
+OTHER COMMANDS
+  focus today     ONE PAGE FOR TODAY: the MUST, what is done, what is left
+  focus dash      dashboard only        focus summary   recap of a cycle
+  focus pomo      timer only            focus points    size one task
+  focus undo      take back a mistake   focus backup    copy to USB stick
+  focus matrix    the Eisenhower chart, to look at or re-sort
+  focus sync      pull notes from the PSPi into the parking lot
+  focus help      list of commands      (add --help to any for details)
+
+WHAT day.py DOES, IN ORDER
+  1. Shows your progress dashboard.
+  2. Counts the focus day (D1, D2, ...). These are its own count, so you
+     can start on any workbook page. It notes the workbook page if you
+     tell it.
+     It has no clock. If the last day is unfinished it offers to
+     continue it. If the last day is finished it asks "Is this a new
+     day?" - a new day starts only when you type y.
+  3. Day 1 of each 7-day cycle: cycle planning (see below).
+     Other days: asks if there is anything new to add to the backlog.
+     Then the Eisenhower chart: all open tasks in their four boxes.
+     Type a number to re-sort one, or Enter if it is right.
+  4. Shows the NEXT note you left last time.
+  5. You pick today's MUST and promise a number of pomodoros.
+  6. For each pomodoro: you say what you will do, the timer runs,
+     then it asks how it went (3 focused, 2 okay, 1 scattered,
+     0 abandoned = does not count) and what comes NEXT.
+  7. For each break: you say what you will do away from the screen,
+     the break timer runs, then it asks if you really stepped away.
+  8. At the promised number it stops you, asks if the MUST is finished,
+     and shows the dashboard again. Close the laptop.
+  9. Day 7 of a cycle: a short review, then back up C:\focus.
+
+HELPERS BUILT IN
+  Parking lot   A stray thought mid-pomodoro goes into park.txt (keep it
+                open in Notepad++), or answer the "stray thought" question
+                after the pomodoro. At the end of the day, day.py goes
+                through them: add to backlog, drop, or keep parked.
+  Energy        day.py asks 1 low, 2 normal, 3 high. On a low day it
+                suggests ONE pomodoro, and that is a full win.
+  First step    Before each pomodoro it asks for the first two-minute
+                action. Start with that, nothing bigger.
+  Deadlines     For an urgent task, day.py asks "due in how many focus
+                days?" and writes it as @D20. The dashboard lists the
+                nearest ones, red when 2 days or fewer are left. These
+                are focus days, not calendar days - keep real dates on
+                paper too.
+  Undo          focus undo removes the last log line or moves the last
+                finished task back to DOING.
+  Backup        focus backup copies everything to focus-backup on the
+                USB stick and writes progress.json for the Mac.
+  Celebration   When the promise is kept: a short tune and a few seconds
+                of confetti. celebrate=off in settings.txt turns it off.
+  PSPi notes    On the PSPi type  note buy stamps . Later, with the PSPi
+                plugged in,  focus sync  moves the notes into park.txt.
+                Setup steps are in pspi\README.txt.
+  Pick for me   When choosing the MUST is too much, type p. It takes the
+                top item.
+
+THE DASHBOARD (python dash.py, or shown by day.py)
+  TODAY       (O) done, ( ) still promised
+  POMODOROS   the wall: one o per pomodoro ever, 20 per row,
+              green = focused, yellow = okay, red = scattered
+  MILESTONES  stars at 1, 5, 10, 25, 50, 75, 100 ... and a bar to the next
+  ACTIVITY    cycles across, days down; brighter green = more pomodoros
+  VELOCITY    points finished per cycle      GOALS  points per #goal
+  Make the Cygwin window taller to see it all at once.
+
+THE TIMER
+  No numbers. Hourglass: sand runs from top to bottom.
+  Ball: a ball bounces in a box that fills from the floor up.
+  "Surprise me" swaps between the two each day.
+  The work colour changes each day (yellow, cyan, magenta).
+  Green is always a break.
+  One soft beep = halfway: are you still on the task?
+  Three beeps = time.
+  Ctrl+C stops it; that pomodoro does not count. Run day.py again
+  and it offers to continue the same day.
+
+ADDING A TASK (day.py asks; this is what the questions mean)
+  Urgent?  Important?   -> the four Eisenhower boxes
+    1 urgent + important     -> top of THIS CYCLE
+    2 important only         -> BACKLOG - IMPORTANT  (the real work)
+    3 urgent only            -> BACKLOG - SOMEDAY
+    4 neither                -> dropped
+  Four size questions        -> story points 1, 2, 3, 5 or 8
+    Anchor: re-solve one LeetCode problem = 2 points.
+    8 = too big, split it before starting.
+  Goal word (hsk, cs311...)  -> adds #hsk so the dashboard can chart it
+
+CYCLE PLANNING (day 1 of each cycle)
+  Sort what is on your mind on paper first. Then day.py shows your
+  velocity (points finished per cycle), returns leftovers to the
+  backlog, and lets you pull tasks into THIS CYCLE until it is full.
+  First cycle: 8 to 10 points.
+
+RULES
+  - A promise is about time. "Planned 2, did 2" is a win even if the
+    task is not finished.
+  - Doing more than planned breaks the promise too.
+  - First cycle: 2 pomodoros a day. Raise it by one only after a whole
+    cycle of kept promises.
+  - Breaks happen away from the laptop.
+
+FILES (all in C:\focus)
+  focus.py and the other .py files are the programs.
+  backlog.txt  tasks (you can edit it by hand in Notepad++)
+  log.txt      everything that happened (written for you)
+  today.txt    today's plan and NEXT note (written for you)
+  park.txt     parking lot for stray thoughts
+  settings.txt timer style and lengths, screen width
+  Keep the section names in backlog.txt exactly as they are.

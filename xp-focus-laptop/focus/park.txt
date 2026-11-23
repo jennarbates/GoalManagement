@@ -1,0 +1,1 @@
+# Parking lot: one stray thought per line. day.py sorts them at the end of the day.

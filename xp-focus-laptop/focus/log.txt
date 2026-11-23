@@ -1,0 +1,2 @@
+This file is written by day.py. One line per event, oldest first.
+

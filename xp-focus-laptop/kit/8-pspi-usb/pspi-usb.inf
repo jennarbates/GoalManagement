@@ -1,0 +1,73 @@
+; Windows XP driver file for the PSPi (Raspberry Pi CM4) USB network gadget.
+; Tells XP to use its built-in RNDIS driver (usb8023.sys / rndismp.sys).
+; Based on Documentation/usb/linux.inf from the Linux kernel, XP sections only.
+
+[Version]
+Signature           = "$Windows NT$"
+Class               = Net
+ClassGUID           = {4d36e972-e325-11ce-bfc1-08002be10318}
+Provider            = %Linux%
+DriverVer           = 03/30/2004,0.0.0.0
+
+[Manufacturer]
+%Linux%          = LinuxDevices,NT.5.1
+
+[LinuxDevices]
+%PspiDevice%     = RNDIS.NT.5.1, USB\VID_2E8A&PID_0013
+%LinuxDevice%    = RNDIS.NT.5.1, USB\VID_0525&PID_A4A2
+
+[LinuxDevices.NT.5.1]
+%PspiDevice%     = RNDIS.NT.5.1, USB\VID_2E8A&PID_0013
+%LinuxDevice%    = RNDIS.NT.5.1, USB\VID_0525&PID_A4A2
+
+[ControlFlags]
+ExcludeFromSelect=*
+
+[RNDIS.NT.5.1]
+Characteristics = 0x84   ; NCF_PHYSICAL + NCF_HAS_UI
+BusType         = 15
+DriverVer       = 03/30/2004,0.0.0.0
+AddReg          = RNDIS_AddReg_NT, RNDIS_AddReg_Common
+; no copyfiles - the driver files are already part of XP
+
+[RNDIS.NT.5.1.Services]
+AddService      = USB_RNDIS, 2, RNDIS_ServiceInst_51, RNDIS_EventLog
+
+[RNDIS_ServiceInst_51]
+DisplayName     = %ServiceDisplayName%
+ServiceType     = 1
+StartType       = 3
+ErrorControl    = 1
+ServiceBinary   = %12%\usb8023.sys
+LoadOrderGroup  = NDIS
+AddReg          = RNDIS_WMI_AddReg_51
+
+[RNDIS_WMI_AddReg_51]
+HKR, , MofImagePath, 0x00020000, "System32\drivers\rndismp.sys"
+
+[RNDIS_AddReg_NT]
+HKR, Ndi,               Service,        0, "USB_RNDIS"
+HKR, Ndi\Interfaces,    UpperRange,     0, "ndis5"
+HKR, Ndi\Interfaces,    LowerRange,     0, "ethernet"
+
+[RNDIS_EventLog]
+AddReg = RNDIS_EventLog_AddReg
+
+[RNDIS_EventLog_AddReg]
+HKR, , EventMessageFile, 0x00020000, "%%SystemRoot%%\System32\netevent.dll"
+HKR, , TypesSupported,   0x00010001, 7
+
+[RNDIS_AddReg_Common]
+HKR, NDI\params\NetworkAddress, ParamDesc,  0, %NetworkAddress%
+HKR, NDI\params\NetworkAddress, type,       0, "edit"
+HKR, NDI\params\NetworkAddress, LimitText,  0, "12"
+HKR, NDI\params\NetworkAddress, UpperCase,  0, "1"
+HKR, NDI\params\NetworkAddress, default,    0, " "
+HKR, NDI\params\NetworkAddress, optional,   0, "1"
+
+[Strings]
+ServiceDisplayName    = "USB Remote NDIS Network Device Driver"
+NetworkAddress        = "Network Address"
+Linux                 = "Linux Developer Community"
+PspiDevice            = "PSPi USB Network Gadget"
+LinuxDevice           = "Linux USB Ethernet/RNDIS Gadget"
