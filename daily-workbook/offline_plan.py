@@ -89,6 +89,28 @@ def window_text(plan: dict) -> str:
         return "your online window"
 
 
+def general_summary() -> dict:
+    """The offline section for an undated workbook: the plan, without "today is ..."."""
+    plan = load_plan()
+    internet_day = str(plan.get("internet_day", "saturday")).title()
+    if plan["mode"] == "weekly_day":
+        mins = plan.get("daily_check_minutes", 0)
+        check = f", plus a {mins}-min urgent check on other days" if mins else ""
+        headline = f"Internet day is {internet_day}{check}"
+    else:
+        headline = f"Online window: {window_text(plan)}"
+    return {
+        "mode": plan["mode"],
+        "headline": headline,
+        "is_online_day": False,
+        "window": window_text(plan),
+        "internet_day": internet_day,
+        "online_list": load_online_list(),
+        "exceptions": list(plan.get("exceptions", [])),
+        "toolkit": list(plan.get("offline_toolkit", [])),
+    }
+
+
 def today_summary(day: date | None = None) -> dict:
     """Everything a printout needs for today's offline section."""
     day = day or date.today()

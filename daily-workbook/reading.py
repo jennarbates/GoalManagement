@@ -9,7 +9,7 @@ article a day, plus writing prompts to summarize it and give your take.
     python3 reading.py add https://example.substack.com/p/some-post [more urls]
     python3 reading.py fetch      # online: download any links not saved yet
     python3 reading.py list       # what's saved, what's been printed
-    python3 reading.py today      # which article today's workbook will use
+    python3 reading.py next       # which article the next workbook will use
 
 Standard library only.
 """
@@ -23,7 +23,7 @@ import sys
 import time
 import urllib.parse
 import urllib.request
-from datetime import date, datetime
+from datetime import datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -108,10 +108,13 @@ def save_article(article: dict) -> None:
 
 
 def load_progress() -> dict:
+    """{"by_workbook": {"1": url, ...}, "round_start": workbook number}."""
     try:
-        return json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+        p = json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"by_date": {}}
+        p = {}
+    p.setdefault("by_workbook", {})
+    return p
 
 
 def save_progress(p: dict) -> None:
@@ -289,7 +292,7 @@ def fetch_all(refetch: bool = False) -> None:
             print(f"⚠ {url}\n   {e}")
 
 
-# ── Picking today's article (offline) ─────────────────────────────────────────
+# ── Picking a workbook's article (offline) ─────────────────────────────────────────
 
 def saved_articles() -> list[dict]:
     """Downloaded articles, in the order the links are listed."""
@@ -301,36 +304,38 @@ def saved_articles() -> list[dict]:
     return out
 
 
-def article_for(day: date | None = None, mark: bool = True) -> dict | None:
-    """Today's article, picked at random from the ones not printed this round.
+def article_for(n: int | None = None, mark: bool = True) -> dict | None:
+    """Workbook n's article, picked at random from the ones not printed this round.
 
     No article repeats until every printable article has had its turn; then a
-    new round starts. The pick is saved, so rerunning the workbook on the same
-    day gives the same article.
+    new round starts. The pick is saved, so rebuilding a workbook gives the
+    same article. n defaults to the next workbook to be built.
     """
-    day = day or date.today()
-    key = day.isoformat()
+    if n is None:
+        import progression
+        n = progression.next_number()
+    key = str(n)
     progress = load_progress()
-    by_date = progress.setdefault("by_date", {})
+    by_wb = progress["by_workbook"]
     # Never print a paywalled preview; only full, free articles.
     articles = [a for a in saved_articles() if not a.get("paywalled")]
     if not articles:
         return None
     by_url = {a["url"]: a for a in articles}
-    if key in by_date and by_date[key] in by_url:
-        return by_url[by_date[key]]
+    if key in by_wb and by_wb[key] in by_url:
+        return by_url[by_wb[key]]
 
-    round_start = progress.get("round_start", "")
-    used = {u for d, u in by_date.items() if d >= round_start}
+    round_start = progress.get("round_start") or 0
+    used = {u for k, u in by_wb.items() if int(k) >= round_start}
     fresh = [a for a in articles if a["url"] not in used]
     if not fresh:  # everyone has had a turn: start a new round
-        round_start = key
-        yesterday = by_date.get(max(by_date)) if by_date else None
-        fresh = [a for a in articles if a["url"] != yesterday] or articles
+        round_start = n
+        last = by_wb.get(str(max(map(int, by_wb)))) if by_wb else None
+        fresh = [a for a in articles if a["url"] != last] or articles
     pick = random.Random(f"reading-{key}").choice(fresh)
     if mark:
         progress["round_start"] = round_start
-        by_date[key] = pick["url"]
+        by_wb[key] = pick["url"]
         save_progress(progress)
     return pick
 
@@ -344,11 +349,11 @@ def main(argv: list[str]) -> int:
         print(f"✓ Added {n} new link(s). Run `python3 reading.py fetch` during your online time.")
     elif cmd == "fetch":
         fetch_all(refetch="--refetch" in argv)
-    elif cmd == "today":
+    elif cmd in ("next", "today"):
         a = article_for(mark=False)
         print(f"{a['title']} ({a['words']} words)" if a else "No saved articles yet.")
     elif cmd == "list":
-        used = set(load_progress().get("by_date", {}).values())
+        used = set(load_progress()["by_workbook"].values())
         links = load_links()
         if not links:
             print("No links yet.")

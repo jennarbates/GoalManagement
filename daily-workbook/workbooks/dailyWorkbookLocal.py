@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """
-Daily Workbook Generator — Whimsical Edition
-Base: stable local MLX + email version.
-Added: day-type awareness, dog care, morning routine, exercise, stretch/yoga,
-       dinner suggestions, life admin, parking lot, full chore schedule,
-       CS311 algorithms practice + HSK 1 + offline plan.
+Workbook Generator — Whimsical Edition
+Local MLX for the cozy bits; everything else is built from the files in
+daily-workbook/.
 
-Day types:
-  Mon/Wed/Fri = Work days  → lighter study blocks
-  Tue         = Free day   → deep study session
-  Thu         = Therapy    → light day, minimal tasks
-  Sat/Sun     = Weekend    → medium study, your pace
+Workbooks are numbered, not dated. Each one picks up where the last one
+stopped (CS311, LeetCode, HSK 1, Italian, reading), so nothing falls behind
+when a day is skipped. Pages that used to follow the calendar (moon, cycle,
+chores) are fill-in pages now: you look, you decide, you write it down.
 
 Setup:
     python3 -m venv .venv
@@ -24,13 +21,12 @@ Required for email:
     export GMAIL_APP_PASSWORD="your_16_char_gmail_app_password"
 
 Run:
-    python3 dailyWorkbookLocal.py
+    python3 dailyWorkbookLocal.py               # build the next workbook
+    python3 dailyWorkbookLocal.py --number 3    # rebuild workbook 3 (same content)
 """
 
 import html as py_html
 import sys
-import urllib.request
-import urllib.error
 import json
 import math
 import os
@@ -39,12 +35,12 @@ import shutil
 import smtplib
 import subprocess
 import traceback
-from datetime import datetime, timedelta
 from email.message import EmailMessage
 from pathlib import Path
 
 # offline_plan.py lives one folder up, in daily-workbook/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import progression
 try:
     import offline_plan
 except ImportError:
@@ -106,51 +102,50 @@ LESSON_WORDS_PER_DAY = 6
 _MODEL     = None
 _TOKENIZER = None
 
-# ── Schedule constants ────────────────────────────────────────────────────────
+# ── Chore menu ────────────────────────────────────────────────────────────────
+# Points are effort, like story points: 1 = five minutes, 5 = a real project.
+# The chore page lets you pick a budget for your energy and commit to that much.
 
-WORK_DAYS    = {0, 2, 4}   # Mon, Wed, Fri — lighter study blocks
-THERAPY_DAY  = 3            # Thu — minimal tasks
-WEEKEND_DAYS = {5, 6}       # Sat, Sun — medium study
-# Tuesday (1) = free day — deep study session
-
-# Weekly chore assignments — same big task each day, predictable
-CHORE_SCHEDULE = {
-    0: ("Bathroom 1 deep clean",       "Toilet, sink, mirror, floor — the works.",                           "~25 min"),
-    1: ("Laundry",                      "Wash + dry a full load. Put it away — don't leave it in the machine.", "~15 min active"),
-    2: ("Floors",                       "Vacuum all rooms, mop/sweep hard floors. Dog hair edition.",          "~30 min"),
-    3: ("Dishes + quick kitchen wipe",  "Therapy day — just the basics, keep it easy.",                       "~10 min"),
-    4: ("Trash + recycling out",        "Quick clutter sweep of one room too.",                               "~15 min"),
-    5: ("Bathroom 2 + clutter purge",   "Second bathroom deep clean + 15 min clutter sort.",                  "~40 min"),
-    6: ("Kitchen deep reset",           "Stovetop, microwave, surfaces clear. Set the week up right.",        "~30 min"),
-}
+CHORE_MENU = [
+    (1, "Clear one visible surface",    "5 min"),
+    (1, "Put away 10 stray items",      "5 min"),
+    (1, "Dishes or sink reset",         "5–10 min"),
+    (1, "Trash + recycling out",        "5 min"),
+    (2, "Dishes + quick kitchen wipe",  "~10 min"),
+    (2, "Laundry: wash, dry, put away", "~15 min active"),
+    (2, "Clutter sweep of one room",    "~15 min"),
+    (3, "Bathroom 1 deep clean",        "~25 min"),
+    (3, "Floors: vacuum + mop",         "~30 min"),
+    (3, "Kitchen deep reset",           "~30 min"),
+    (5, "Bathroom 2 + clutter purge",   "~40 min"),
+]
+# One bigger chore takes the spotlight each workbook, in turn, so none of them
+# waits forever. It's worth a bonus point if you pick it.
+CHORE_SPOTLIGHT = [c for c in CHORE_MENU if c[0] >= 2]
+CHORE_SPEED_RUNS = [
+    "Set a 7-min timer and race one tiny mess, not the whole house.",
+    "Set a 5-min timer and clear the bathroom counter.",
+    "One song: put away everything on the floor of one room.",
+    "Set a 10-min timer: fill one bag for donation or trash.",
+    "Two songs: empty and reload the dishwasher or drying rack.",
+]
+CHORE_REWARDS = ["boba point", "sticker", "sweet treat", "cozy show episode", "fancy tea", "ten guilt-free minutes"]
 
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def day_type(weekday: int) -> str:
-    if weekday in WORK_DAYS:    return "work"
-    if weekday == THERAPY_DAY:  return "therapy"
-    if weekday in WEEKEND_DAYS: return "weekend"
-    return "free"  # Tuesday
 
 
 def esc(text) -> str:
     return py_html.escape("" if text is None else str(text))
 
-# The day this workbook is for. None = today. Set by --date so a batch can
-# build future days ahead of time; everything date-dependent reads wb_now().
-WORKBOOK_DATE = None
+# The workbook being built. Set in main(): the next one, or --number N.
+WORKBOOK_NUM = 1
 
-def wb_now() -> datetime:
-    if WORKBOOK_DATE is None:
-        return datetime.now()
-    return datetime.combine(WORKBOOK_DATE, datetime.now().time())
+def workbook_label() -> str:
+    return f"Workbook {WORKBOOK_NUM}"
 
-def today_stamp() -> str:
-    return wb_now().strftime("%Y-%m-%d")
-
-def today_label() -> str:
-    return wb_now().strftime("%A, %B %d, %Y")
+def rotate(options: list, offset: int = 0):
+    """The option for this workbook: walks the list in order and wraps around."""
+    return options[(WORKBOOK_NUM - 1 + offset) % len(options)]
 
 def ensure_output_dir() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -300,9 +295,9 @@ def vocab_by_char(char: str):
 def words_from_chars(chars):
     return dedupe_words([item for ch in chars if (item := vocab_by_char(ch))])
 
-def get_existing_day_pack(progress: dict, date_str: str):
+def get_existing_day_pack(progress: dict, day_num: int):
     for day in progress.get("days", []):
-        if day.get("date") == date_str:
+        if day.get("day_num") == day_num:
             return {
                 "new_words":       words_from_chars(day.get("new_chars", [])),
                 "review_words":    words_from_chars(day.get("review_chars", [])),
@@ -314,8 +309,8 @@ def get_existing_day_pack(progress: dict, date_str: str):
             }
     return None
 
-def choose_hsk_words_for_today(progress: dict, date_str: str):
-    existing = get_existing_day_pack(progress, date_str)
+def choose_hsk_words_for_today(progress: dict, day_num: int):
+    existing = get_existing_day_pack(progress, day_num)
     if existing: return existing
 
     introduced_chars = progress.get("introduced_chars", [])
@@ -344,7 +339,7 @@ def choose_hsk_words_for_today(progress: dict, date_str: str):
         "all_learned_words": all_learned_words,
     }
 
-def update_hsk_progress(progress: dict, day_num: int, date_str: str, today_pack: dict) -> None:
+def update_hsk_progress(progress: dict, day_num: int, today_pack: dict) -> None:
     new_chars = [w["char"] for w in today_pack["new_words"]]
     introduced = progress.get("introduced_chars", [])
     for ch in new_chars:
@@ -352,7 +347,7 @@ def update_hsk_progress(progress: dict, day_num: int, date_str: str, today_pack:
     progress["introduced_chars"] = introduced
 
     replacement = {
-        "day_num": day_num, "date": date_str,
+        "day_num": day_num,
         "new_chars":        new_chars,
         "review_chars":     [w["char"] for w in today_pack["review_words"]],
         "lesson_chars":     [w["char"] for w in today_pack["lesson_words"]],
@@ -364,7 +359,7 @@ def update_hsk_progress(progress: dict, day_num: int, date_str: str, today_pack:
             replacement[key] = today_pack[key]
     days = progress.setdefault("days", [])
     for i, day in enumerate(days):
-        if day.get("date") == date_str:
+        if day.get("day_num") == day_num:
             days[i] = replacement
             save_hsk_progress(progress); return
     days.append(replacement)
@@ -473,161 +468,50 @@ def ctx_json(data: dict) -> str:
 
 
 
-# ── Moon phase (pure Python, no API needed) ───────────────────────────────────
+# ── Moon phases (a fill-in page: you look up and work out which one it is) ────
 
-# Named full moons by month
-FULL_MOON_NAMES = {
-    1:  ("Wolf Moon",      "The deep of winter. A time for stillness, rest, and tending to your inner world."),
-    2:  ("Snow Moon",      "The coldest moon. What do you need to let go of before spring can arrive?"),
-    3:  ("Worm Moon",      "The earth begins to stir. A time to plan what you want to grow."),
-    4:  ("Pink Moon",      "First blooms. Let what has been dormant inside you begin to emerge."),
-    5:  ("Flower Moon",    "Full abundance. What seeds you planted are beginning to show themselves."),
-    6:  ("Strawberry Moon","The sweetest moon. Celebrate what is already good in your life right now."),
-    7:  ("Buck Moon",      "A time of rapid growth. What needs your most focused energy this month?"),
-    8:  ("Sturgeon Moon",  "Late summer abundance. What are you harvesting from this year's efforts?"),
-    9:  ("Harvest Moon",   "The great reaping. What have you built? What are you proud of?"),
-    10: ("Hunter's Moon",  "Preparation for the dark. What do you need to gather before winter comes?"),
-    11: ("Beaver Moon",    "Time to build shelter. Tend to your home, your relationships, your resources."),
-    12: ("Cold Moon",      "The longest night. Rest is not laziness — it is preparation."),
-}
-
-PHASE_SPIRITUAL = {
-    "New Moon":        ("New beginnings, intention setting, planting seeds",
-                        "A reset point. What do you want to call in this cycle? Write one clear intention."),
-    "Waxing Crescent": ("Growth, momentum, taking first steps",
-                        "The momentum is building. What small action today moves you toward your intention?"),
-    "First Quarter":   ("Decision, commitment, pushing through resistance",
-                        "The halfway point to full. What is getting in your way, and what do you choose despite it?"),
-    "Waxing Gibbous":  ("Refinement, patience, trust the process",
-                        "Almost there. What needs adjusting before things come to fruition?"),
-    "Full Moon":       ("Culmination, release, illumination, celebration",
-                        "What has come to light? What are you releasing? What are you grateful for?"),
-    "Waning Gibbous":  ("Gratitude, sharing, integration",
-                        "The peak has passed. What did you learn? Who can you share it with?"),
-    "Last Quarter":    ("Letting go, forgiveness, clearing",
-                        "Time to release what no longer serves. What habit, thought, or weight do you put down?"),
-    "Waning Crescent": ("Rest, surrender, preparation",
-                        "The cycle is closing. Rest without guilt. The new moon is coming."),
-}
-
-
-_SYNODIC_MONTH = 29.530588861  # mean days between new moons
-_J2000_UTC = datetime(2000, 1, 1, 12)  # Julian Day 2451545.0
-
-
-def _moon_event_utc(k: float) -> datetime:
-    """Exact time (UTC, naive) of lunation k: integer k = new moon, k+0.5 = full moon.
-
-    Meeus, Astronomical Algorithms ch. 49, with the largest periodic terms —
-    good to within roughly half an hour, versus up to ~14 h for a mean cycle.
-    k = 0 is the new moon of 2000-01-06.
-    """
-    rad = math.radians
-    T = k / 1236.85
-    jde = (2451550.09766 + _SYNODIC_MONTH * k
-           + 0.00015437 * T**2 - 0.000000150 * T**3 + 0.00000000073 * T**4)
-    E  = 1 - 0.002516 * T - 0.0000074 * T**2
-    M  = rad(2.5534 + 29.10535670 * k - 0.0000014 * T**2)            # sun's anomaly
-    Mp = rad(201.5643 + 385.81693528 * k + 0.0107582 * T**2)         # moon's anomaly
-    F  = rad(160.7108 + 390.67050284 * k - 0.0016118 * T**2)         # moon's latitude arg
-    if k % 1 == 0:  # new moon
-        c = (-0.40720, 0.17241, 0.01608, 0.01039, 0.00739, -0.00514, 0.00208)
-    else:           # full moon
-        c = (-0.40614, 0.17302, 0.01614, 0.01043, 0.00734, -0.00515, 0.00209)
-    jde += (c[0] * math.sin(Mp) + c[1] * E * math.sin(M) + c[2] * math.sin(2 * Mp)
-            + c[3] * math.sin(2 * F) + c[4] * E * math.sin(Mp - M)
-            + c[5] * E * math.sin(Mp + M) + c[6] * E**2 * math.sin(2 * M))
-    return _J2000_UTC + timedelta(days=jde - 2451545.0)
-
-
-def get_moon_phase(dt: datetime | None = None) -> dict:
-    """Calculate moon phase purely from math. No network required.
-
-    `dt` is local wall-clock time (what wb_now() returns). "New Moon" and
-    "Full Moon" mean that exact moment falls on this local calendar date, so
-    the phase name and the "new moon today" banner always agree.
-    """
-    if dt is None:
-        dt = wb_now()
-    utc_offset = dt.astimezone().utcoffset() or timedelta(0)
-    dt_utc     = dt - utc_offset
-    to_local   = lambda u: u + utc_offset
-
-    # Bracket dt between the new moon before it and the one after it
-    k = math.floor((dt_utc - _moon_event_utc(0)).total_seconds() / 86400 / _SYNODIC_MONTH)
-    while _moon_event_utc(k) > dt_utc:     k -= 1
-    while _moon_event_utc(k + 1) <= dt_utc: k += 1
-    prev_new, next_new = _moon_event_utc(k), _moon_event_utc(k + 1)
-    full_this = _moon_event_utc(k + 0.5)
-
-    lunar_cycle  = (next_new - prev_new).total_seconds() / 86400
-    phase_day    = (dt_utc - prev_new).total_seconds() / 86400
-    illumination = (1 - math.cos(2 * math.pi * phase_day / lunar_cycle)) / 2
-
-    today    = dt.date()
-    is_new   = to_local(prev_new).date() == today or to_local(next_new).date() == today
-    is_full  = to_local(full_this).date() == today
-    quarter  = lambda frac: abs(phase_day - lunar_cycle * frac) < 0.5  # within the day
-
-    if is_new:                    phase_name, emoji = "New Moon",        "🌑"
-    elif is_full:                 phase_name, emoji = "Full Moon",       "🌕"
-    elif quarter(0.25):           phase_name, emoji = "First Quarter",   "🌓"
-    elif quarter(0.75):           phase_name, emoji = "Last Quarter",    "🌗"
-    elif phase_day < lunar_cycle * 0.25: phase_name, emoji = "Waxing Crescent", "🌒"
-    elif full_this > dt_utc:      phase_name, emoji = "Waxing Gibbous",  "🌔"
-    elif phase_day < lunar_cycle * 0.75: phase_name, emoji = "Waning Gibbous", "🌖"
-    else:                         phase_name, emoji = "Waning Crescent", "🌘"
-
-    # Next full moon (this lunation's, unless it has already passed)
-    next_full = full_this if (full_this > dt_utc or is_full) else _moon_event_utc(k + 1.5)
-    days_to_full = max(0.0, (next_full - dt_utc).total_seconds() / 86400)
-
-    # Full moon date
-    full_moon_dt   = to_local(next_full)
-    full_moon_month = full_moon_dt.month
-    moon_name, moon_lore = FULL_MOON_NAMES.get(full_moon_month, ("Full Moon", "A time of completion and release."))
-    full_moon_label = f"{moon_name} — {full_moon_dt.strftime('%B %d')}"
-
-    # Spiritual meaning for current phase
-    keywords, reflection_prompt = PHASE_SPIRITUAL.get(phase_name, ("Mystery", "Sit with the unknown."))
-
-    full_moon_soon  = days_to_full <= 3 and not is_full
-
-    # Next new moon (today's, if it happens today)
-    if is_new:
-        days_to_new = 0.0
-        new_moon_dt = to_local(prev_new if to_local(prev_new).date() == today else next_new)
-    else:
-        days_to_new = (next_new - dt_utc).total_seconds() / 86400
-        new_moon_dt = to_local(next_new)
-    new_moon_soon = days_to_new <= 3 and not is_new
-
-    NEW_MOON_LORE = (
-        "The new moon is a blank page. Intentions set now are planted in fertile darkness — "
-        "they don't need to be seen yet to be real. What do you want to grow this cycle?"
-    )
-
-    return {
-        "phase_name":         phase_name,
-        "emoji":              emoji,
-        "phase_day":          round(phase_day, 1),
-        "illumination_pct":   round(illumination * 100),
-        "days_to_full":       round(days_to_full, 1),
-        "days_to_new":        round(days_to_new, 1),
-        "is_full":            is_full,
-        "is_new":             is_new,
-        "full_moon_soon":     full_moon_soon,
-        "new_moon_soon":      new_moon_soon,
-        "full_moon_label":    full_moon_label,
-        "full_moon_name":     moon_name,
-        "full_moon_lore":     moon_lore,
-        "full_moon_date_str": full_moon_dt.strftime("%B %d, %Y"),
-        "new_moon_date_str":  new_moon_dt.strftime("%B %d, %Y"),
-        "new_moon_lore":      NEW_MOON_LORE,
-        "keywords":           keywords,
-        "reflection_prompt":  reflection_prompt,
-    }
-
+# (symbol, name, how to spot it, keywords, question)
+MOON_PHASES = [
+    ("🌑", "New Moon",        "dark, or not up at night",
+     "New beginnings, intention setting, planting seeds",
+     "What do you want to call in this cycle?"),
+    ("🌒", "Waxing Crescent", "thin sliver, lit on the right, evening",
+     "Growth, momentum, taking first steps",
+     "What small action moves you toward your intention?"),
+    ("🌓", "First Quarter",   "right half lit",
+     "Decision, commitment, pushing through resistance",
+     "What is in your way, and what do you choose despite it?"),
+    ("🌔", "Waxing Gibbous",  "almost full, still growing",
+     "Refinement, patience, trusting the process",
+     "What needs adjusting before things come together?"),
+    ("🌕", "Full Moon",       "a whole bright disc",
+     "Culmination, release, illumination, celebration",
+     "What has come to light? What are you releasing?"),
+    ("🌖", "Waning Gibbous",  "just past full, shrinking",
+     "Gratitude, sharing, integration",
+     "What did you learn, and who can you share it with?"),
+    ("🌗", "Last Quarter",    "left half lit, up after midnight",
+     "Letting go, forgiveness, clearing",
+     "What habit, thought, or weight do you put down?"),
+    ("🌘", "Waning Crescent", "thin sliver, lit on the left, before dawn",
+     "Rest, surrender, preparation",
+     "Where can you rest without guilt?"),
+]
+MOON_REFLECTIONS = [
+    "What does this phase mean to me right now?",
+    "Where in my life is something growing, and where is something fading?",
+    "What would it look like to move with this phase instead of against it?",
+    "What do I want to be true by the time the moon looks like this again?",
+    "What is this moon asking me to notice?",
+    "If tonight's moon were a mood, which of mine would it be?",
+]
+MOON_RITUALS = [
+    "Light a candle, take three slow breaths, and write one honest sentence about where you are right now.",
+    "Stand outside for two minutes. Name five things you can see and one thing you can let go of.",
+    "Write one word for this phase on your hand or a scrap of paper and keep it with you tomorrow.",
+    "Put a glass of water where the moon would reach it. Drink it in the morning, slowly.",
+    "Breathe in for four, out for six, ten times, looking at the sky or a window.",
+]
 
 
 # ── Cycle tracking ────────────────────────────────────────────────────────────
@@ -644,8 +528,6 @@ def _cycle_setting(key: str, default: int) -> int:
 
 
 CYCLE_LENGTH_AVG  = _cycle_setting("cycle_length_avg",  28)
-CYCLE_LENGTH_MIN  = _cycle_setting("cycle_length_min",  21)
-CYCLE_LENGTH_MAX  = _cycle_setting("cycle_length_max",  35)
 PERIOD_LENGTH_AVG = _cycle_setting("period_length_avg",  5)
 OVULATION_DAY     = _cycle_setting("ovulation_day",     14)
 FOLLICULAR_DAYS   = _cycle_setting("follicular_days",   14)
@@ -755,272 +637,14 @@ CYCLE_PHASES = {
 }
 
 
-def load_cycle_data() -> dict:
-    if not CYCLE_FILE.exists():
-        return {"last_period_start": None, "cycle_length_avg": CYCLE_LENGTH_AVG, "history": []}
-    try:
-        return json.loads(CYCLE_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        return {"last_period_start": None, "cycle_length_avg": CYCLE_LENGTH_AVG, "history": []}
-
-
-def save_cycle_data(data: dict) -> None:
-    ensure_output_dir()
-    CYCLE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def log_period_start(date_str: str | None = None) -> None:
-    """Log today (or a given date) as period start. Run with --log-period."""
-    data = load_cycle_data()
-    date_str = date_str or today_stamp()
-    history  = data.get("history", [])
-
-    # Calculate last cycle length if we have a previous entry
-    if data.get("last_period_start"):
-        prev = datetime.strptime(data["last_period_start"], "%Y-%m-%d")
-        curr = datetime.strptime(date_str, "%Y-%m-%d")
-        actual_length = (curr - prev).days
-        if CYCLE_LENGTH_MIN <= actual_length <= CYCLE_LENGTH_MAX + 5:
-            history.append({"date": data["last_period_start"], "cycle_length": actual_length})
-            # Update rolling average from last 3 cycles
-            recent = [h["cycle_length"] for h in history[-3:]]
-            data["cycle_length_avg"] = round(sum(recent) / len(recent))
-            print(f"✓ Last cycle was {actual_length} days. Rolling avg now {data['cycle_length_avg']} days.")
-
-    data["last_period_start"] = date_str
-    data["history"] = history[-12:]  # Keep last 12 cycles
-    save_cycle_data(data)
-    print(f"✓ Period start logged: {date_str}")
-    print(f"  Run the workbook tomorrow and the cycle section will be live.")
-
-
-def get_cycle_info() -> dict:
-    """Calculate current cycle phase from stored data."""
-    data = load_cycle_data()
-    last_start = data.get("last_period_start")
-    avg_length = data.get("cycle_length_avg", CYCLE_LENGTH_AVG)
-
-    if not last_start:
-        return {
-            "available":    False,
-            "phase_key":    None,
-            "phase":        None,
-            "cycle_day":    None,
-            "days_in_phase":None,
-            "days_until_next_period": None,
-            "days_until_ovulation":   None,
-            "period_coming_soon":     False,
-            "ovulation_soon":         False,
-        }
-
-    last_dt  = datetime.strptime(last_start, "%Y-%m-%d")
-    today_dt = wb_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    cycle_day = (today_dt - last_dt).days + 1  # Day 1 = first day of period
-
-    # Handle cycle rollover
-    if cycle_day > avg_length + 5:
-        cycle_day = cycle_day % avg_length or avg_length
-
-    # Determine phase using her actual app data
-    # Menstrual: days 1-4
-    # Follicular: days 5-13 (follicular 14±2, ovulation day 15±2)
-    # Ovulatory: days 13-17 (centered on day 15)
-    # Luteal early: days 18-22
-    # Luteal late / PMS: days 23-avg_length
-    if cycle_day <= PERIOD_LENGTH_AVG:
-        phase_key = "menstrual"
-        days_in_phase = cycle_day
-    elif cycle_day <= OVULATION_DAY - 2:
-        phase_key = "follicular"
-        days_in_phase = cycle_day - PERIOD_LENGTH_AVG
-    elif cycle_day <= OVULATION_DAY + 2:
-        phase_key = "ovulatory"
-        days_in_phase = cycle_day - (OVULATION_DAY - 2)
-    elif cycle_day <= avg_length - 5:
-        phase_key = "luteal_early"
-        days_in_phase = cycle_day - (OVULATION_DAY + 2)
-    else:
-        phase_key = "luteal_late"
-        days_in_phase = cycle_day - (avg_length - 5)
-
-    phase = CYCLE_PHASES[phase_key]
-    days_until_next_period = max(0, avg_length - cycle_day + 1)
-    days_until_ovulation   = max(0, OVULATION_DAY - cycle_day)
-    period_coming_soon     = 0 < days_until_next_period <= 3
-    ovulation_soon         = 0 < days_until_ovulation <= 2
-
-    return {
-        "available":              True,
-        "phase_key":              phase_key,
-        "phase":                  phase,
-        "cycle_day":              cycle_day,
-        "cycle_length_avg":       avg_length,
-        "days_in_phase":          days_in_phase,
-        "days_until_next_period": days_until_next_period,
-        "days_until_ovulation":   days_until_ovulation,
-        "period_coming_soon":     period_coming_soon,
-        "ovulation_soon":         ovulation_soon,
-        "last_period_start":      last_start,
-    }
-
-
-
-# ── Weather (NWS free API — no key needed) ────────────────────────────────────
-# Amherst MA: 42.3732, -72.5199
-# NWS pre-resolved grid: BOX 67,87 (Boston office)
-# Forecast URL cached to avoid double round-trip every morning
-
-NWS_FORECAST_URL = "https://api.weather.gov/gridpoints/BOX/67,87/forecast"
-NWS_HOURLY_URL   = "https://api.weather.gov/gridpoints/BOX/67,87/forecast/hourly"
-NWS_ALERTS_URL   = "https://api.weather.gov/alerts/active?point=42.3732,-72.5199"
-NWS_HEADERS      = {"User-Agent": "DailyWorkbook/1.0 (personal use)"}
-WEATHER_TIMEOUT  = 8  # seconds
-
-
-def c_to_f(c):
-    """Celsius to Fahrenheit."""
-    if c is None: return None
-    return round(c * 9/5 + 32)
-
-
-def fetch_weather() -> dict:
-    """Fetch today's weather from NWS for Amherst MA. Returns a safe dict always."""
-    base = {
-        "available":    False,
-        "location":     "Amherst, MA",
-        "today":        {},
-        "tonight":      {},
-        "tomorrow":     {},
-        "hourly":       [],
-        "alerts":       [],
-        "error":        None,
-    }
-
-    try:
-        # ── Fetch forecast (daily periods) ───────────────────────────────────
-        req = urllib.request.Request(NWS_FORECAST_URL, headers=NWS_HEADERS)
-        with urllib.request.urlopen(req, timeout=WEATHER_TIMEOUT) as resp:
-            forecast_data = json.loads(resp.read().decode())
-
-        periods = forecast_data.get("properties", {}).get("periods", [])
-        if not periods:
-            base["error"] = "No forecast periods returned"
-            return base
-
-        def parse_period(p):
-            return {
-                "name":        p.get("name", ""),
-                "is_daytime":  p.get("isDaytime", True),
-                "temp_f":      p.get("temperature"),
-                "temp_unit":   p.get("temperatureUnit", "F"),
-                "wind_speed":  p.get("windSpeed", ""),
-                "wind_dir":    p.get("windDirection", ""),
-                "short_desc":  p.get("shortForecast", ""),
-                "detail":      p.get("detailedForecast", ""),
-                "precip_pct":  p.get("probabilityOfPrecipitation", {}).get("value") or 0,
-                "icon":        p.get("icon", ""),
-            }
-
-        # First 3 periods cover today, tonight, tomorrow
-        parsed = [parse_period(p) for p in periods[:4]]
-        base["today"]    = parsed[0] if len(parsed) > 0 else {}
-        base["tonight"]  = parsed[1] if len(parsed) > 1 else {}
-        base["tomorrow"] = parsed[2] if len(parsed) > 2 else {}
-
-        # ── Fetch alerts ──────────────────────────────────────────────────────
-        try:
-            req2 = urllib.request.Request(NWS_ALERTS_URL, headers=NWS_HEADERS)
-            with urllib.request.urlopen(req2, timeout=WEATHER_TIMEOUT) as resp2:
-                alerts_data = json.loads(resp2.read().decode())
-            features = alerts_data.get("features", [])
-            base["alerts"] = [
-                {
-                    "event":    f["properties"].get("event", ""),
-                    "headline": f["properties"].get("headline", ""),
-                    "severity": f["properties"].get("severity", ""),
-                }
-                for f in features[:3]  # max 3 alerts
-            ]
-        except Exception:
-            pass  # alerts are nice-to-have, not critical
-
-        # ── Fetch hourly for next 12 hours ────────────────────────────────────
-        try:
-            req3 = urllib.request.Request(NWS_HOURLY_URL, headers=NWS_HEADERS)
-            with urllib.request.urlopen(req3, timeout=WEATHER_TIMEOUT) as resp3:
-                hourly_data = json.loads(resp3.read().decode())
-            hourly_periods = hourly_data.get("properties", {}).get("periods", [])[:12]
-            base["hourly"] = [
-                {
-                    "time":       p.get("startTime", "")[-14:-9] if p.get("startTime") else "",
-                    "temp_f":     p.get("temperature"),
-                    "short_desc": p.get("shortForecast", ""),
-                    "precip_pct": p.get("probabilityOfPrecipitation", {}).get("value") or 0,
-                }
-                for p in hourly_periods
-            ]
-        except Exception:
-            pass  # hourly is nice-to-have
-
-        base["available"] = True
-        return base
-
-    except Exception as e:
-        base["error"] = str(e)
-        return base
-
-
-def weather_emoji(desc: str) -> str:
-    """Short text label for weather — emoji fail in Chrome headless PDF export."""
-    d = desc.lower()
-    if "thunder" in d:                               return "Storm"
-    if "snow" in d:                                  return "Snow"
-    if "sleet" in d or "ice" in d:                   return "Sleet"
-    if "rain" in d or "shower" in d:                 return "Rain"
-    if "drizzle" in d:                               return "Drizzle"
-    if "fog" in d:                                   return "Fog"
-    if "partly cloudy" in d or "mostly sunny" in d:  return "Part. Cloudy"
-    if "mostly cloudy" in d or "partly sunny" in d:  return "Mostly Cloudy"
-    if "cloudy" in d:                                return "Cloudy"
-    if "sunny" in d or "clear" in d:                 return "Sunny"
-    if "wind" in d:                                  return "Windy"
-    return "—"
-
-
 # ── Day context ───────────────────────────────────────────────────────────────
 
 def get_day_context() -> dict:
-    date_str  = today_stamp()
-    weekday   = wb_now().weekday()
-    dtype     = day_type(weekday)
-    seed      = random.randint(1, 99999)
-    start      = datetime(2026, 5, 12)
-    day_num    = max(1, (wb_now() - start).days + 1)
-    cert_day   = day_num
-    weekly_task, weekly_note, weekly_time = CHORE_SCHEDULE[weekday]
     progress  = load_hsk_progress()
-    today_hsk = choose_hsk_words_for_today(progress, date_str)
-
-    moon    = get_moon_phase()
-    cycle   = get_cycle_info()
-    weather = fetch_weather()
-
     return {
-        "today_label": today_label(),
-        "today_date":  date_str,
-        "weekday":     weekday,
-        "dtype":       dtype,
-        "seed":        seed,
-        "day_num":     day_num,
-        "cert_day":    cert_day,
-        "weekly_task": weekly_task,
-        "weekly_note": weekly_note,
-        "weekly_time": weekly_time,
-        "today_hsk":   today_hsk,
-        "progress":    progress,
-        "moon":        moon,
-        "cycle":       cycle,
-        "weather":     weather,
+        "day_num":   WORKBOOK_NUM,
+        "today_hsk": choose_hsk_words_for_today(progress, WORKBOOK_NUM),
+        "progress":  progress,
     }
 
 
@@ -1036,16 +660,13 @@ def generate_theme_and_cover(ctx: dict) -> dict:
   "theme": {{"title": "short whimsical title", "subtitle": "cute subtitle", "mascot": "cute object or animal mascot"}},
   "cover": {{"welcome": "2 short sentences", "pep_talk": "1 short encouraging paragraph", "today_big_focus": "one short phrase", "focus_words": ["word 1", "word 2", "word 3", "word 4"], "sticker_caption": "short invitation"}}
 }}
-Context: {ctx_json({"date": ctx["today_label"], "day_num": ctx["day_num"], "day_type": ctx["dtype"], "vibe": "whimsical, cozy, children's menu, coloring workbook"})}
+Context: {ctx_json({"workbook_number": ctx["day_num"], "vibe": "whimsical, cozy, children's menu, coloring workbook"})}
 Rules: JSON only. Concise. No markdown."""
     return generate_json_object("theme_cover", prompt, ["theme", "cover"], fallback, 900)
 
 
 def generate_morning_page(ctx: dict) -> dict:
-    dtype = ctx["dtype"]
-    is_work    = dtype == "work"
-    is_therapy = dtype == "therapy"
-
+    """Stretch, exercise and dinner ideas. Each list is walked in order, one per workbook."""
     stretch_types = [
         ("5-min morning spine wake-up", "Start lying down. Hug knees to chest for 30s. Roll to seated cat-cow x5. Standing forward fold 30s. Arms overhead side stretch each side."),
         ("Sun salutation flow", "Mountain pose → arms up → forward fold → plank → cobra → downward dog → forward fold → mountain. Repeat 3 times slowly."),
@@ -1053,53 +674,59 @@ def generate_morning_page(ctx: dict) -> dict:
         ("Desk worker reset", "Neck rolls each direction. Shoulder rolls. Chest opener arms behind back. Wrist circles. Standing quad stretch each side."),
         ("Breathwork + gentle stretch", "Box breathing 4 rounds (4 counts in, hold, out, hold). Seated forward fold. Supine knee-to-chest. End with 2 min savasana."),
     ]
-    stretch_name, stretch_desc = random.choice(stretch_types)
+    stretch_name, stretch_desc = rotate(stretch_types)
 
-    exercise_suggestions = {
-        "work":    ["Quick 20-min gym session before or after work — push/pull supersets", "15-min bodyweight circuit at home before you leave — squats, push-ups, rows"],
-        "free":    ["Full gym session — upper body focus", "Full gym session — lower body focus", "30-min run or walk outside + 10 min bodyweight"],
-        "therapy": ["Just the dog walks count today — take them slow and breathe"],
-        "weekend": ["Longer gym session — full body", "Outdoor activity — long walk, hike, or bike ride with the dog", "Home workout — dumbbell circuit 30 min"],
-    }
-    exercise = random.choice(exercise_suggestions.get(dtype, exercise_suggestions["free"]))
-
-    dinner_suggestions = {
-        "work":    ["Sheet pan chicken thighs + roasted broccoli + rice (30 min, mostly hands-off)", "Stir-fry beef + peppers + snap peas over rice (20 min)", "Turkey taco bowls — seasoned meat, black beans, salsa, avocado (25 min)"],
-        "free":    ["Homemade ramen — broth, soft-boiled eggs, veggies, pork or tofu", "Stuffed bell peppers with ground beef + quinoa + tomato sauce", "Salmon en papillote + roasted sweet potato + salad"],
-        "therapy": ["Simple pasta + marinara + rotisserie chicken + side salad (20 min)", "Eggs any style + toast + sliced veg — easy, low-effort, still good"],
-        "weekend": ["Sunday roast chicken + roasted root veg + gravy", "Homemade pizza on naan or flatbread — whatever toppings you have", "Slow cooker chili — set it in the morning, done by dinner"],
-    }
-    dinner = random.choice(dinner_suggestions.get(dtype, dinner_suggestions["free"]))
-
+    # Ordered so a lighter option always follows a heavier one.
+    exercise_suggestions = [
+        "Full gym session — upper body focus",
+        "Quick 20-min session — push/pull supersets",
+        "Outdoor activity — long walk, hike, or bike ride with the dog",
+        "Full gym session — lower body focus",
+        "15-min bodyweight circuit at home — squats, push-ups, rows",
+        "Easy day: the dog walks count — take them slow and breathe",
+        "30-min run or walk outside + 10 min bodyweight",
+        "Home workout — dumbbell circuit 30 min",
+    ]
+    dinner_suggestions = [
+        "Sheet pan chicken thighs + roasted broccoli + rice (30 min, mostly hands-off)",
+        "Homemade ramen — broth, soft-boiled eggs, veggies, pork or tofu",
+        "Simple pasta + marinara + rotisserie chicken + side salad (20 min)",
+        "Stir-fry beef + peppers + snap peas over rice (20 min)",
+        "Stuffed bell peppers with ground beef + quinoa + tomato sauce",
+        "Eggs any style + toast + sliced veg — easy, low-effort, still good",
+        "Turkey taco bowls — seasoned meat, black beans, salsa, avocado (25 min)",
+        "Salmon en papillote + roasted sweet potato + salad",
+        "Homemade pizza on naan or flatbread — whatever toppings you have",
+        "Slow cooker chili — set it going early, done by dinner",
+        "Roast chicken + roasted root veg + gravy",
+    ]
     return {
         "stretch_name": stretch_name,
         "stretch_desc": stretch_desc,
-        "exercise": exercise,
-        "dinner": dinner,
-        "is_therapy": is_therapy,
-        "is_work": is_work,
+        "exercise": rotate(exercise_suggestions),
+        "dinner": rotate(dinner_suggestions),
     }
 
 
 def generate_algorithms_page(ctx: dict) -> dict:
-    """CS311: today's course-order questions + one random question (cs311.py)."""
+    """CS311: this workbook's course-order questions + one random question (cs311.py)."""
     if cs311 is None:
         return {}
-    return cs311.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
+    return cs311.daily_set(ctx["day_num"])
 
 
 def generate_leetcode_page(ctx: dict) -> dict:
-    """Today's LeetCode problem + re-solves due (leetcode.py)."""
+    """This workbook's LeetCode problem + re-solves due (leetcode.py)."""
     if leetcode is None:
         return {}
-    return leetcode.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
+    return leetcode.daily_set(ctx["day_num"])
 
 
 def generate_reading_page(ctx: dict) -> dict:
-    """Today's saved Substack article (reading.py) + the summary/opinion prompts."""
+    """This workbook's saved Substack article (reading.py) + the summary/opinion prompts."""
     if reading is None:
         return {}
-    article = reading.article_for(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date())
+    article = reading.article_for(ctx["day_num"])
     if not article:
         return {}
     return {**article, "prompts": [{"lens": label, "text": text, "follow": follow, "lines": lines}
@@ -1107,40 +734,15 @@ def generate_reading_page(ctx: dict) -> dict:
 
 
 def generate_chores_page(ctx: dict) -> dict:
-    dtype      = ctx["dtype"]
-    weekly_task= ctx["weekly_task"]
-    weekly_note= ctx["weekly_note"]
-    weekly_time= ctx["weekly_time"]
-    is_therapy = dtype == "therapy"
-
-    fallback = {
-        "title": "Little Home Reset Quest",
-        "weekly": {"task": weekly_task, "note": weekly_note, "time_estimate": weekly_time},
-        "daily": [
-            {"task": "Clear one visible surface.", "time_estimate": "5 min"},
-            {"task": "Put away 10 stray items.", "time_estimate": "5 min"},
-            {"task": "Reset dishes or sink area.", "time_estimate": "5 min"},
-            {"task": "Take out trash or recycling if needed.", "time_estimate": "5 min"},
-        ] if not is_therapy else [{"task": "Just the dishes. That's it.", "time_estimate": "5 min"}],
-        "speed_run": "Set a 7-min timer and race one tiny mess — not the whole house.",
-        "reward_ideas": ["boba point", "sticker", "sweet treat", "cozy show episode"],
+    """Chore sprint: a points menu, a spotlight chore that rotates, and room to commit."""
+    pts, task, time_estimate = rotate(CHORE_SPOTLIGHT)
+    return {
+        "title": "Chore Sprint",
+        "menu": [{"points": p, "task": t, "time_estimate": e} for p, t, e in CHORE_MENU],
+        "spotlight": {"points": pts, "task": task, "time_estimate": time_estimate},
+        "speed_run": rotate(CHORE_SPEED_RUNS),
+        "reward_ideas": [rotate(CHORE_REWARDS, k) for k in range(4)],
     }
-
-    num_daily = 1 if is_therapy else 4
-    daily_list = ',\n    '.join(['{"task": "quick chore", "time_estimate": "5 min"}'] * num_daily)
-
-    prompt = f"""Create ONLY this JSON object:
-{{
-  "title": "cute chore-quest title eg 'Laundry Love & Quick Wins'",
-  "weekly": {{"task": "{weekly_task}", "note": "{weekly_note}", "time_estimate": "{weekly_time}"}},
-  "daily": [{daily_list}],
-  "speed_run": "a specific fun timed challenge eg 'Set a 5-min timer and clear the bathroom counter'",
-  "reward_ideas": ["specific tiny reward eg 'boba point'", "specific tiny reward eg 'one show episode'", "specific tiny reward eg 'sweet treat'", "specific tiny reward eg 'cozy blanket time'"]
-}}
-Context: {ctx_json({"day_type": dtype, "is_therapy_day": is_therapy})}
-Rules: JSON only. Daily chores under 10 min. Therapy day = minimal. reward_ideas must be real specific rewards, not placeholder text."""
-
-    return generate_json_object("chores_page", prompt, ["title", "weekly", "daily", "speed_run", "reward_ideas"], fallback, 800)
 
 
 def _load_parking_lot() -> list[str]:
@@ -1156,9 +758,7 @@ def _load_parking_lot() -> list[str]:
 
 
 def generate_admin_parking(ctx: dict) -> dict:
-    """Life admin task (free/weekend days) + parking lot for ideas."""
-    dtype = ctx["dtype"]
-    is_therapy = dtype == "therapy"
+    """One life admin task (they take turns) + parking lot for ideas."""
 
     admin_tasks = [
         "Reply to any unread emails that have been sitting more than 3 days",
@@ -1172,14 +772,15 @@ def generate_admin_parking(ctx: dict) -> dict:
     parking_items = _load_parking_lot()
 
     return {
-        "admin_task": random.choice(admin_tasks) if not is_therapy else None,
+        "admin_task": rotate(admin_tasks),
         "parking_items": random.sample(parking_items, min(2, len(parking_items))),
     }
 
 
-def _recent_story_picks(progress: dict, date_str: str, days: int = 3) -> tuple[list, list]:
-    """Story and dialogue ids used on the few days before date_str."""
-    earlier = sorted((d for d in progress.get("days", []) if d.get("date", "") < date_str), key=lambda d: d["date"])[-days:]
+def _recent_story_picks(progress: dict, day_num: int, days: int = 3) -> tuple[list, list]:
+    """Story and dialogue ids used in the few workbooks before this one."""
+    earlier = sorted((d for d in progress.get("days", []) if d.get("day_num", 0) < day_num),
+                     key=lambda d: d["day_num"])[-days:]
     return [d.get("story_id") for d in earlier], [d.get("dialogue_id") for d in earlier]
 
 
@@ -1236,7 +837,8 @@ def build_chinese_pages(ctx: dict) -> dict:
     lesson_words = today_hsk["lesson_words"][:LESSON_WORDS_PER_DAY]
     review_words = dedupe_words(today_hsk.get("review_words",[]) + today_hsk.get("lesson_words",[]))[:4]
     char_target  = today_hsk["char_practice"]
-    date_str     = ctx["today_date"]
+    day_num      = ctx["day_num"]
+    pick_key     = f"workbook-{day_num}"   # varies the tie-break from one workbook to the next
 
     vocab   = set(WORD_INDEX)
     learned = {w["char"] for w in today_hsk.get("all_learned_words", []) + lesson_words}
@@ -1245,9 +847,9 @@ def build_chinese_pages(ctx: dict) -> dict:
 
     story = dialogue = None
     if hsk_stories:
-        recent_s, recent_d = _recent_story_picks(ctx.get("progress") or {}, date_str)
-        story = hsk_stories.pick(hsk_stories.STORIES, vocab, learned, focus, recent_s, date_str, today_hsk.get("story_id"))
-        dialogue = hsk_stories.pick(hsk_stories.DIALOGUES, vocab, learned, focus, recent_d, date_str, today_hsk.get("dialogue_id"))
+        recent_s, recent_d = _recent_story_picks(ctx.get("progress") or {}, day_num)
+        story = hsk_stories.pick(hsk_stories.STORIES, vocab, learned, focus, recent_s, pick_key, today_hsk.get("story_id"))
+        dialogue = hsk_stories.pick(hsk_stories.DIALOGUES, vocab, learned, focus, recent_d, pick_key, today_hsk.get("dialogue_id"))
     story    = story or _FALLBACK_STORY
     dialogue = dialogue or _FALLBACK_DIALOGUE
     today_hsk["story_id"], today_hsk["dialogue_id"] = story["id"], dialogue["id"]
@@ -1340,65 +942,6 @@ def build_chinese_pages(ctx: dict) -> dict:
     }
 
 
-def generate_moon_page(ctx: dict) -> dict:
-    """Generate spiritual/reflective moon content using local model."""
-    moon = ctx["moon"]
-    phase    = moon["phase_name"]
-    keywords = moon["keywords"]
-    prompt_q = moon["reflection_prompt"]
-    is_full  = moon["is_full"]
-    soon     = moon["full_moon_soon"]
-    moon_name = moon["full_moon_name"]
-    moon_lore = moon["full_moon_lore"]
-
-    is_new  = moon.get("is_new", False)
-    new_soon = moon.get("new_moon_soon", False)
-    new_moon_date = moon.get("new_moon_date_str", "")
-    days_to_new   = moon.get("days_to_new", 0)
-    new_moon_lore = moon.get("new_moon_lore", "")
-
-    full_moon_extra = ""
-    if is_full:
-        full_moon_extra = f"Tonight IS the {moon_name}. {moon_lore}"
-    elif soon:
-        days = moon["days_to_full"]
-        full_moon_extra = f"The {moon_name} arrives in {days:.0f} day(s). {moon_lore}"
-
-    new_moon_extra = ""
-    if is_new:
-        new_moon_extra = f"Tonight IS the New Moon — a powerful time for intention setting. {new_moon_lore}"
-    elif new_soon:
-        new_moon_extra = f"The New Moon arrives in {days_to_new:.0f} day(s) on {new_moon_date}. {new_moon_lore}"
-
-    cycle_info = moon.get("_cycle_context", "")
-    extra_context = " ".join(filter(None, [full_moon_extra, new_moon_extra]))
-
-    fallback = {
-        "phase_meaning":     f"The {phase} is a time of {keywords.lower()}.",
-        "spiritual_note":    "Every phase of the moon mirrors a phase inside you. Nothing is wasted.",
-        "reflection_q":      prompt_q,
-        "ritual_suggestion": "Light a candle, take three slow breaths, and write one honest sentence about where you are right now.",
-        "full_moon_message": full_moon_extra if (is_full or soon) else "",
-        "new_moon_message":  new_moon_extra if (is_new or new_soon) else "",
-    }
-
-    prompt = f"""Create ONLY this JSON object:
-{{
-  "phase_meaning": "2-3 sentences about what the {phase} means spiritually and energetically",
-  "spiritual_note": "one gentle poetic observation about this moon phase and inner life",
-  "reflection_q": "one deep but accessible reflection question for this phase",
-  "ritual_suggestion": "one simple 2-minute ritual or practice suited to this phase (no supplies needed)",
-  "full_moon_message": "{full_moon_extra if (is_full or soon) else "leave this as an empty string"}",
-  "new_moon_message": "{new_moon_extra if (is_new or new_soon) else "leave this as an empty string"}"
-}}
-Context: Phase is {phase} ({keywords}). {extra_context}
-Rules: JSON only. Warm, spiritual but grounded. No toxic positivity. Short strings."""
-
-    return generate_json_object("moon_page", prompt,
-        ["phase_meaning","spiritual_note","reflection_q","ritual_suggestion","full_moon_message","new_moon_message"],
-        fallback, 700)
-
-
 def generate_creativity_page(ctx: dict) -> dict:
     fallback = {
         "title": "Sticker Soup Studio",
@@ -1423,7 +966,6 @@ Rules: JSON only. Short strings. All values must be real content, not placeholde
 
 
 def generate_reflection_and_back(ctx: dict) -> dict:
-    dtype = ctx["dtype"]
     fallback = {
         "reflection_page": {
             "title": "Evening Crumb Trail",
@@ -1455,32 +997,27 @@ def generate_reflection_and_back(ctx: dict) -> dict:
     "tomorrow_preview": "preview prompt"
   }}
 }}
-Context: {ctx_json({"day_type": dtype})}
 Rules: JSON only. Gentle and cozy."""
     return generate_json_object("reflection_back", prompt, ["reflection_page","back_page"], fallback, 900)
 
 
 def generate_workbook_content() -> dict:
     ctx = get_day_context()
-    print(f"\n📅 Day type: {ctx['dtype'].upper()} — {ctx['today_label']}")
+    print(f"\n📓 {workbook_label()}")
     print("⏳ Generating workbook section by section...\n")
 
-    wb = {"day_num": ctx["day_num"], "_dtype": ctx["dtype"], "_today_date": ctx["today_date"]}
+    wb = {"day_num": ctx["day_num"]}
 
     wb.update(generate_theme_and_cover(ctx))
     wb["_morning"]    = generate_morning_page(ctx)
     wb["_algorithms"] = generate_algorithms_page(ctx)
     wb["_leetcode"]   = generate_leetcode_page(ctx)
-    wb["_italian"]    = italian.daily_set(datetime.strptime(ctx["today_date"], "%Y-%m-%d").date()) if italian else {}
+    wb["_italian"]    = italian.daily_set(ctx["day_num"]) if italian else {}
     wb["_reading"]    = generate_reading_page(ctx)
     wb["chores_page"] = generate_chores_page(ctx)
     wb["_admin_parking"] = generate_admin_parking(ctx)
-    wb["_offline"] = offline_plan.today_summary(wb_now().date()) if offline_plan else {}
+    wb["_offline"] = offline_plan.general_summary() if offline_plan else {}
     wb.update(build_chinese_pages(ctx))
-    wb["_moon"]           = ctx["moon"]
-    wb["_weather"]        = ctx["weather"]
-    wb["_moon_page"]      = generate_moon_page(ctx)
-    wb["_cycle"]          = ctx["cycle"]
     wb.update(generate_reflection_and_back(ctx))
 
     wb["_hsk_internal"] = ctx["today_hsk"]
@@ -1513,30 +1050,6 @@ def normalize(wb: dict) -> dict:
     wb["cover"].setdefault("sticker_caption", "Add a sticker or doodle here when the day begins.")
 
     # Certs
-
-    # Chores
-    wb.setdefault("chores_page", {})
-    wb["chores_page"].setdefault("title","Little Home Reset Quest")
-    wb["chores_page"].setdefault("weekly",{"task":"Kitchen reset","note":"Wipe surfaces.","time_estimate":"20 min"})
-    wb["chores_page"]["weekly"] = as_dict_item(wb["chores_page"]["weekly"],"task")
-    wb["chores_page"]["weekly"].setdefault("task","Kitchen reset")
-    wb["chores_page"]["weekly"].setdefault("note","Wipe surfaces.")
-    wb["chores_page"]["weekly"].setdefault("time_estimate","20 min")
-    _chore_fallbacks = iter(["Clear one visible surface.", "Put away 10 stray items.", "Reset dishes or sink area.", "Take out trash or recycling if needed."])
-    wb["chores_page"]["daily"] = [as_dict_item(t,"task") for t in wb["chores_page"].get("daily",[])]
-    while len(wb["chores_page"]["daily"]) < 2:
-        wb["chores_page"]["daily"].append({"task":"Clear one surface.","time_estimate":"5 min"})
-    for t in wb["chores_page"]["daily"]:
-        t.setdefault("task",""); t.setdefault("time_estimate","")
-        if _is_placeholder(t["task"]):
-            t["task"] = next(_chore_fallbacks, "Clear one surface.")
-    _speed_run = wb["chores_page"].get("speed_run", "")
-    if not _speed_run or _is_placeholder(_speed_run) or _speed_run.lower() in _PLACEHOLDER_LITERALS:
-        wb["chores_page"]["speed_run"] = "Set a 7-min timer and race one tiny mess — not the whole house."
-    _reward_fallbacks = ["boba point", "sticker", "sweet treat", "cozy show episode"]
-    wb["chores_page"]["reward_ideas"] = _filter_placeholders(normalize_list_of_strings(wb["chores_page"].get("reward_ideas",[])), _reward_fallbacks)
-    while len(wb["chores_page"]["reward_ideas"]) < 4:
-        wb["chores_page"]["reward_ideas"].append(_reward_fallbacks[len(wb["chores_page"]["reward_ideas"]) % len(_reward_fallbacks)])
 
     # Chinese
     for page_key, list_key in [("chinese_lesson_page","vocab"),("chinese_lesson_page","review_words"),("chinese_reference_page","reader_helper_words")]:
@@ -1886,6 +1399,21 @@ STYLES = """
   .moon-ritual { border-left:3px solid #9B8EC4; padding-left:10px; margin:10px 0; }
   .moon-ritual-text { font-size:13px; color:#222; font-style:italic; }
   .moon-write-line { border-bottom:1px solid #bbb; height:26px; margin-bottom:8px; }
+  .moon-grid { overflow:hidden; margin:8px 0 2px; }
+  .moon-cell { float:left; width:23.5%; margin:0 1.5% 8px 0; box-sizing:border-box; border:1.5px solid #9B8EC4; border-radius:12px; padding:7px 6px; text-align:center; min-height:176px; }
+  .moon-cell-emoji { font-size:28px; line-height:1.1; }
+  .moon-cell-name { font-size:12.5px; font-weight:800; color:#2b2540; margin:2px 0; }
+  .moon-cell-spot { font-family:Menlo,Monaco,monospace; font-size:9px; color:#555; margin-bottom:4px; }
+  .moon-cell-kw { font-size:10.5px; color:#333; line-height:1.3; }
+  .moon-cell-q { font-size:10.5px; color:#444; font-style:italic; line-height:1.3; margin-top:4px; }
+  .moon-draw { width:130px; height:130px; border:2px dashed #9B8EC4; border-radius:50%; margin:8px auto 4px; }
+  .chore-menu { overflow:hidden; }
+  .chore-menu-item { float:left; width:48%; margin:0 2% 6px 0; box-sizing:border-box; font-size:12.5px; color:#222; line-height:1.35; }
+  .chore-pts { display:inline-block; min-width:34px; text-align:center; font-family:Menlo,Monaco,monospace; font-size:10.5px; font-weight:700; border:1.5px solid #C8B6FF; border-radius:8px; padding:1px 4px; margin-right:6px; color:#5D4D85; background:#F8F6FF; }
+  .chore-commit-row { overflow:hidden; margin-bottom:9px; }
+  .chore-commit-box { float:left; width:18px; height:18px; border:2px solid #C8B6FF; border-radius:5px; margin-right:8px; }
+  .chore-commit-line { float:left; width:68%; border-bottom:2px dashed #D8D0C8; height:20px; }
+  .chore-commit-pts { float:right; width:70px; border-bottom:2px dashed #D8D0C8; height:20px; text-align:right; font-family:Menlo,Monaco,monospace; font-size:10.5px; color:#888; }
   .full-moon-alert, .new-moon-alert { border:1.5px solid #9B8EC4; border-radius:14px; background:#fff; padding:10px 12px; margin-top:12px; }
   .full-moon-alert { border-color:#C9A227; }
   .full-moon-alert-title, .new-moon-alert-title { font-size:14px; font-weight:800; color:#222; margin-bottom:6px; }
@@ -1910,26 +1438,6 @@ STYLES = """
   .cycle-bar-wrap { display:flex; gap:3px; margin:8px 0 4px; }
   .cycle-bar-seg { height:8px; border-radius:4px; flex:1; border:1px solid #bbb; background:#fff; }
 
-  .weather-card { border:2px dashed #90BFDF; border-radius:18px; background:#EFF7FF; padding:14px 16px; margin-bottom:12px; }
-  .weather-main { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
-  .weather-emoji { font-size:18px; font-weight:800; color:#1A4A6E; background:#D6EAFF; border-radius:8px; padding:6px 10px; line-height:1; white-space:nowrap; }
-  .weather-temp { font-size:36px; font-weight:800; color:#1A4A6E; line-height:1; }
-  .weather-desc { font-size:14px; color:#2C6E9E; margin-top:2px; font-weight:500; }
-  .weather-wind { font-size:12px; color:#5A8DAE; margin-top:2px; }
-  .weather-grid { overflow:hidden; margin-bottom:10px; }
-  .weather-grid > * { float:left; width:48%; margin-right:2%; margin-bottom:8px; box-sizing:border-box; }
-  .weather-block { background:rgba(255,255,255,0.7); border-radius:10px; padding:8px 10px; }
-  .weather-block-label { font-family:Menlo,Monaco,monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.07em; color:#5A8DAE; margin-bottom:3px; }
-  .weather-block-val { font-size:14px; font-weight:800; color:#1A4A6E; }
-  .weather-block-sub { font-size:11px; color:#5A8DAE; margin-top:1px; }
-  .weather-hourly { display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; }
-  .weather-hour { text-align:center; min-width:44px; background:rgba(255,255,255,0.6); border-radius:8px; padding:6px 4px; flex-shrink:0; }
-  .weather-hour-time { font-family:Menlo,Monaco,monospace; font-size:9px; color:#5A8DAE; }
-  .weather-hour-temp { font-size:13px; font-weight:800; color:#1A4A6E; margin:2px 0; }
-  .weather-hour-precip { font-size:9px; color:#6A9FBF; }
-  .weather-alert { border:2px solid #E05A5A; border-radius:10px; background:#FFF0F0; padding:8px 10px; margin-bottom:6px; }
-  .weather-alert-title { font-size:12px; font-weight:800; color:#C03030; }
-  .weather-alert-sub { font-size:11px; color:#A04040; margin-top:2px; }
 
   @page { size: Letter; margin: 0.25in; }
 
@@ -1957,7 +1465,7 @@ STYLES = """
 
     .frame { min-height: 9.86in !important; height: auto !important; max-height: none !important; overflow: visible !important; display: flex !important; flex-direction: column !important; }
 
-    .card, .hero-card, .weather-card, .weather-alert,
+    .card, .hero-card,
     .moon-card, .moon-reflection, .moon-ritual,
     .full-moon-alert, .new-moon-alert,
     .cycle-card, .cycle-block, .cycle-alert, .cycle-emotional,
@@ -1976,8 +1484,8 @@ STYLES = """
     }
 
     .vocab-grid, .sticker-grid, .gloss-grid, .doodle-grid,
-    .weather-grid, .cycle-row, .split, .split-3,
-    .trace-row, .weather-hourly {
+    .cycle-row, .split, .split-3,
+    .trace-row, .moon-grid, .chore-menu {
       page-break-inside: avoid !important;
       break-inside: avoid !important;
     }
@@ -1985,24 +1493,24 @@ STYLES = """
     .card.split-ok, .split-ok .gloss-grid, .split-ok .bonus-grid { page-break-inside: auto !important; break-inside: auto !important; }
 
     .page { font-size: 95% !important; }
-    .card, .hero-card, .weather-card, .moon-card, .cycle-card { margin-bottom:9px !important; }
+    .card, .hero-card, .moon-card, .cycle-card { margin-bottom:9px !important; }
   }
 </style>
 """
 
 
 def page_footer_label() -> str:
-    """Short date stamped next to each page number, e.g. 'Tue Nov 10'."""
-    now = wb_now()
-    return f"{now:%a %b} {now.day}"
+    """Stamped next to each page number, e.g. 'Workbook 3'."""
+    return workbook_label()
 
 
 def page_number_style() -> str:
-    """Stamp 'Tue Nov 10 · 3 / 54' in the bottom margin of every printed sheet.
+    """Stamp 'Workbook 3 · 3 / 54' in the bottom margin of every printed sheet.
 
     Uses @page margin boxes, so it numbers physical sheets — including the
     extra sheets that .flow pages (articles, worked problems) spill onto — and
-    the date keeps days apart when several are printed and bound together.
+    the workbook number keeps them apart when several are printed and bound
+    together.
     """
     return ("<style>@page { @bottom-right {"
             f" content: \"{page_footer_label()} · \" counter(page) \" / \" counter(pages);"
@@ -2022,18 +1530,8 @@ def build_html(wb: dict) -> str:
     reflection     = wb["reflection_page"]
     back           = wb["back_page"]
     morning        = wb.get("_morning", {})
-    moon_data      = wb.get("_moon", {})
-    cycle_data     = wb.get("_cycle", {})
-    weather_data   = wb.get("_weather", {})
-    moon_page      = wb.get("_moon_page", {})
     admin_parking  = wb.get("_admin_parking", {})
-    dtype          = wb.get("_dtype", "free")
-    date_label     = today_label()
     day_num        = wb.get("day_num", 1)
-
-    is_work    = dtype == "work"
-    is_therapy = dtype == "therapy"
-    is_weekend = dtype == "weekend"
 
     # ── Helper lambdas ────────────────────────────────────────────────────────
 
@@ -2070,8 +1568,13 @@ def build_html(wb: dict) -> str:
     # ── Build HTML sections ───────────────────────────────────────────────────
 
     focus_chips = "".join(chip(w) for w in cover["focus_words"])
-    chores_weekly_html = checkbox_item(f"⭐ {chores['weekly'].get('task','')}", f"{chores['weekly'].get('note','')} · {chores['weekly'].get('time_estimate','')}", "#D89BE8", "#FCF5FF")
-    chores_daily_html = "".join(checkbox_item(t.get("task",""), t.get("time_estimate",""), "#C8B6FF", "#F8F6FF") for t in chores["daily"])
+    chore_menu_html = "".join(
+        f'<div class="chore-menu-item"><span class="chore-pts">{c["points"]} pt{"" if c["points"] == 1 else "s"}</span>'
+        f'{esc(c["task"])} <span class="mini-note">{esc(c["time_estimate"])}</span></div>' for c in chores["menu"])
+    chore_commit_html = "".join(
+        '<div class="chore-commit-row"><div class="chore-commit-box"></div><div class="chore-commit-line"></div>'
+        '<div class="chore-commit-pts">pts</div></div>' for _ in range(5))
+    spotlight = chores["spotlight"]
     lesson_vocab_html = "".join(vocab_card(v) for v in chinese_lesson["vocab"])
     review_vocab_html = "".join(vocab_card(v) for v in chinese_lesson["review_words"][:3])
     dialogue_html = "".join(dialogue_row(l) for l in chinese_lesson["mini_dialogue"])
@@ -2107,7 +1610,7 @@ def build_html(wb: dict) -> str:
 
     parts = [
         "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'>",
-        f"<title>Daily Workbook — {esc(date_label)}</title>",
+        f"<title>{esc(workbook_label())}</title>",
         STYLES,
         page_number_style(),
         "</head><body>",
@@ -2117,9 +1620,9 @@ def build_html(wb: dict) -> str:
     # ── PAGE 1: Cover + Morning ───────────────────────────────────────────────
     parts.append(f"""
 <div class="page"><div class="frame">
-  <div class="eyebrow">Day {day_num} · whimsical daily workbook</div>
+  <div class="eyebrow">Workbook {day_num} · pick it up whenever you're ready</div>
   <div class="main-title">✨ {esc(theme["title"])} ✨</div>
-  <div class="sub-title">{esc(theme["subtitle"])} · {esc(date_label)}</div>
+  <div class="sub-title">{esc(theme["subtitle"])} · started on: ______________</div>
   <div class="mascot">Today's mascot: {esc(theme["mascot"])}</div>
 
   <div class="one-thing-box">
@@ -2302,15 +1805,12 @@ def build_html(wb: dict) -> str:
     def review_page(reviews):
         cards = ""
         for r in reviews:
-            try:
-                when = datetime.strptime(r.get("from_date", ""), "%Y-%m-%d").strftime("%a %b %-d")
-            except ValueError:
-                when = r.get("from_date", "")
-            extra = f'<div class="footer-note">{esc(r.get("topic",""))} Q{r.get("question_number","")} · you did this on {esc(when)}</div>'
+            extra = (f'<div class="footer-note">{esc(r.get("topic",""))} Q{r.get("question_number","")}'
+                     f' · from workbook {esc(r.get("from_workbook",""))}</div>')
             cards += practice_card(r.get("practice") or {}, "Redo it cold", extra)
         return f"""
 <div class="page flow"><div class="frame">
-  {section_title("cs311 · spaced review", "Can you still do it?", f"{len(reviews)} from earlier days")}
+  {section_title("cs311 · spaced review", "Can you still do it?", f"{len(reviews)} from earlier workbooks")}
   <div class="footer-note" style="margin-bottom:10px;">Questions you already did. Try them without looking back at that day's pages: pulling it out of memory is what makes it stick. Answers are on the last page.</div>
   {cards}
 </div></div>
@@ -2344,7 +1844,7 @@ def build_html(wb: dict) -> str:
         reviews_html = ""
         for r in lc.get("reviews", []):
             reviews_html += (f'<div class="card lc-card"><div class="mini-title">🔁 Re-solve: #{r["lc"]} {esc(r["title"])} '
-                             f'<span class="lc-meta">from {r["days_ago"]} days ago</span></div>'
+                             f'<span class="lc-meta">from {r["workbooks_ago"]} workbooks ago</span></div>'
                              f'<div class="lc-statement">{esc(r.get("statement", ""))}</div>'
                              f'<div class="lc-ex-grid">{examples_html(r)}</div>'
                              f'<div class="footer-note" style="margin-top:4px;"><b>Constraints:</b> {esc(r.get("constraints", ""))}</div>'
@@ -2411,26 +1911,38 @@ def build_html(wb: dict) -> str:
 """)
 
     parts.append("<!--SECTION:chores-->")
-    # ── PAGE 3: Chores ────────────────────────────────────────────────────────
+    # ── Chores: a points menu to commit to ────────────────────────────────────
     parts.append(f"""
-<div class="page"><div class="frame">
-  {section_title("home quest", chores["title"], "quick wins")}
+<div class="page flow"><div class="frame">
+  {section_title("home quest", chores["title"], "pick your points")}
+
   <div class="card">
-    <div class="mini-title">Today's tidy-up trail</div>
-    {chores_weekly_html}
-    {chores_daily_html}
+    <div class="mini-title">1 · Energy check: circle your budget</div>
+    <div>{chip("Low energy → 3 points")}{chip("Medium → 5 points")}{chip("High → 8 points")}</div>
+    <div class="footer-note" style="margin-top:6px;">Points are effort, not minutes. A small budget you finish beats a big one you avoid.</div>
+  </div>
+
+  <div class="card">
+    <div class="mini-title">2 · The menu</div>
+    <div class="chore-menu">{chore_menu_html}</div>
+    <div class="footer-note" style="margin-top:4px;">⭐ In the spotlight this time: <b>{esc(spotlight["task"])}</b> ({spotlight["points"]} pts, plus 1 bonus point if you pick it).</div>
+    <div class="footer-note">Put a ! next to anything overdue, smelly, or nagging at you. Those go into your sprint first.</div>
+  </div>
+
+  <div class="card">
+    <div class="mini-title">3 · My sprint: what I'm committing to</div>
+    {chore_commit_html}
+    <div class="footer-note" style="margin-top:4px;">Committed: ______ pts &nbsp;·&nbsp; Done: ______ pts &nbsp;·&nbsp; Carrying over to next time: ______________________</div>
   </div>
 
   <div class="split">
     <div class="card">
       <div class="mini-title">Speed-run challenge</div>
       <div class="footer-note">{esc(chores["speed_run"])}</div>
-      <div class="medium-blank" style="margin-top:10px;"><div class="mini-note">Color here when you beat it.</div></div>
     </div>
     <div class="card">
       <div class="mini-title">Reward snack bar</div>
       <div>{reward_chips}</div>
-      <div class="medium-blank" style="margin-top:10px;"><div class="mini-note">Sticker zone 🎉</div></div>
     </div>
   </div>
 
@@ -2467,9 +1979,7 @@ def build_html(wb: dict) -> str:
     # ── PAGE 5: Offline today ─────────────────────────────────────────────────
     offline = wb.get("_offline") or {}
     if offline:
-        if offline.get("is_online_day"):
-            sub = "Your batched list is below. Close the laptop when it's done."
-        elif offline.get("mode") == "weekly_day":
+        if offline.get("mode") == "weekly_day":
             sub = "Write anything you need online on the list. It waits for your internet day."
         else:
             sub = "Outside that hour, write it on the list instead of looking it up."
@@ -2571,241 +2081,47 @@ def build_html(wb: dict) -> str:
 </div></div>
 """)
 
-    parts.append("<!--SECTION:weather-->")
-    # ── Weather page ──────────────────────────────────────────────────────────
-    wx_avail   = weather_data.get("available", False)
-    wx_today   = weather_data.get("today", {})
-    wx_tonight = weather_data.get("tonight", {})
-    wx_tomorrow= weather_data.get("tomorrow", {})
-    wx_hourly  = weather_data.get("hourly", [])
-    wx_alerts  = weather_data.get("alerts", [])
-    wx_error   = weather_data.get("error")
-
-    if wx_avail and wx_today:
-        wx_emoji  = weather_emoji(wx_today.get("short_desc", ""))
-        wx_temp   = wx_today.get("temp_f", "–")
-        wx_desc   = wx_today.get("short_desc", "")
-        wx_wind   = f'{wx_today.get("wind_speed","")} {wx_today.get("wind_dir","")}'.strip()
-        wx_precip = wx_today.get("precip_pct", 0)
-        wx_detail = wx_today.get("detail", "")
-
-        tn_emoji  = weather_emoji(wx_tonight.get("short_desc",""))
-        tn_temp   = wx_tonight.get("temp_f","–")
-        tn_desc   = wx_tonight.get("short_desc","")
-        tn_precip = wx_tonight.get("precip_pct",0)
-
-        tm_emoji  = weather_emoji(wx_tomorrow.get("short_desc",""))
-        tm_temp   = wx_tomorrow.get("temp_f","–")
-        tm_desc   = wx_tomorrow.get("short_desc","")
-
-        # Hourly strip
-        hourly_html = ""
-        for h in wx_hourly[:6]:
-            p = h.get("precip_pct", 0)
-            precip_str = f'{p}%' if p else "—"
-            hourly_html += f'''<div class="weather-hour">
-              <div class="weather-hour-time">{esc(h.get("time",""))}</div>
-              <div class="weather-hour-temp">{h.get("temp_f","–")}°</div>
-              <div class="weather-hour-precip">💧{precip_str}</div>
-            </div>'''
-
-        # Alerts
-        alerts_html = ""
-        for a in wx_alerts:
-            alerts_html += f'''<div class="weather-alert">
-              <div class="weather-alert-title">⚠️ {esc(a.get("event",""))}</div>
-              <div class="weather-alert-sub">{esc(a.get("headline",""))}</div>
-            </div>'''
-
-        # Outfit suggestion based on temp + conditions
-        temp_val = wx_temp if isinstance(wx_temp, (int,float)) else 60
-        rain_likely = wx_precip and wx_precip >= 40
-        if temp_val >= 75:
-            outfit = "Light layers — it's warm out. Shorts/tee weather."
-        elif temp_val >= 60:
-            outfit = "Light jacket or long sleeves. Comfortable walking weather."
-        elif temp_val >= 45:
-            outfit = "Jacket needed. Consider a mid-layer."
-        elif temp_val >= 32:
-            outfit = "Winter coat, hat, gloves. Cold out there."
-        else:
-            outfit = "Bundle up — below freezing. Heavy coat, layers, warm socks."
-        if rain_likely:
-            outfit += " Bring an umbrella or rain jacket — good chance of rain."
-
-        parts.append(f"""
-<div class="page"><div class="frame">
-  {section_title("outside", "Weather — Amherst, MA", "today\'s forecast")}
-
-  {alerts_html}
-
-  <div class="weather-card">
-    <div class="weather-main">
-      <div class="weather-emoji">{wx_emoji}</div>
-      <div>
-        <div class="weather-temp">{wx_temp}°F</div>
-        <div class="weather-desc">{esc(wx_desc)}</div>
-        <div class="weather-wind">💨 {esc(wx_wind)}</div>
-      </div>
-    </div>
-
-    <div class="weather-grid">
-      <div class="weather-block">
-        <div class="weather-block-label">Rain chance</div>
-        <div class="weather-block-val">{wx_precip}%</div>
-      </div>
-      <div class="weather-block">
-        <div class="weather-block-label">Tonight</div>
-        <div class="weather-block-val">{tn_emoji} {tn_temp}°F</div>
-        <div class="weather-block-sub">{esc(tn_desc)}</div>
-      </div>
-      <div class="weather-block">
-        <div class="weather-block-label">Tomorrow</div>
-        <div class="weather-block-val">{tm_emoji} {tm_temp}°F</div>
-        <div class="weather-block-sub">{esc(tm_desc)}</div>
-      </div>
-      <div class="weather-block">
-        <div class="weather-block-label">Tonight rain</div>
-        <div class="weather-block-val">{tn_precip}%</div>
-      </div>
-    </div>
-
-    <div class="mini-title" style="margin-bottom:6px;">Next 10 hours</div>
-    <div class="weather-hourly">{hourly_html}</div>
-  </div>
-
-  <div class="card" style="background:#EFF7FF;border-color:#90BFDF;">
-    <div class="mini-title">👕 What to wear today</div>
-    <div class="footer-note">{esc(outfit)}</div>
-  </div>
-
-  <div class="card" style="background:#EFF7FF;border-color:#90BFDF;">
-    <div class="mini-title">📋 Full forecast</div>
-    <div class="footer-note">{esc(wx_detail)}</div>
-  </div>
-  <div style="flex:1"></div>
-</div></div>
-""")
-
-    else:
-        err_msg = f"Could not fetch weather: {wx_error}" if wx_error else "Weather unavailable — check your connection."
-        parts.append(f"""
-<div class="page"><div class="frame">
-  {section_title("outside", "Weather — Amherst, MA", "today\'s forecast")}
-  <div class="card" style="text-align:center;padding:30px 20px;">
-    <div style="font-size:36px;margin-bottom:12px;">🌡️</div>
-    <div class="footer-note">{esc(err_msg)}</div>
-  </div>
-  <div style="flex:1"></div>
-</div></div>
-""")
-
     parts.append("<!--SECTION:moon-->")
-    # ── PAGE 4: Moon ──────────────────────────────────────────────────────────────
-    def _when(days):
-        n = round(days)
-        return "today" if n <= 0 else "tomorrow" if n == 1 else f"in {n} days"
-    moon_phase_name  = moon_data.get("phase_name", "Unknown Phase")
-    moon_emoji       = moon_data.get("emoji", "🌕")
-    moon_illum       = moon_data.get("illumination_pct", 0)
-    moon_days_full   = moon_data.get("days_to_full", 0)
-    moon_days_new    = moon_data.get("days_to_new", 0)
-    moon_is_full     = moon_data.get("is_full", False)
-    moon_is_new      = moon_data.get("is_new", False)
-    moon_soon        = moon_data.get("full_moon_soon", False)
-    moon_new_soon    = moon_data.get("new_moon_soon", False)
-    moon_full_label  = moon_data.get("full_moon_label", "")
-    moon_full_lore   = moon_data.get("full_moon_lore", "")
-    moon_new_lore    = moon_data.get("new_moon_lore", "")
-    moon_full_date   = moon_data.get("full_moon_date_str", "")
-    moon_new_date    = moon_data.get("new_moon_date_str", "")
-    moon_keywords    = moon_data.get("keywords", "")
-
-    mp_meaning   = moon_page.get("phase_meaning", "")
-    mp_spiritual = moon_page.get("spiritual_note", "")
-    mp_reflect_q = moon_page.get("reflection_q", "")
-    mp_ritual    = moon_page.get("ritual_suggestion", "")
-    mp_full_msg  = moon_page.get("full_moon_message", "")
-    mp_new_msg   = moon_page.get("new_moon_message", "")
-
-    # Progress bar (moon illumination)
-    bar_filled = int(moon_illum / 5)  # 20 segments
-    bar_empty  = 20 - bar_filled
-    moon_bar   = "█" * bar_filled + "░" * bar_empty
-
-    full_moon_alert_html = ""
-    if moon_is_full:
-        full_moon_alert_html = f'''
-        <div class="full-moon-alert">
-          <div class="full-moon-alert-title">🌕 Tonight is the {esc(moon_data.get("full_moon_name","Full Moon"))}!</div>
-          <div class="full-moon-alert-text">{esc(moon_full_lore)}</div>
-          {f'<div class="full-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_full_msg)}</div>' if mp_full_msg else ""}
-        </div>'''
-    elif moon_soon:
-        full_moon_alert_html = f'''
-        <div class="full-moon-alert">
-          <div class="full-moon-alert-title">🌔 {esc(moon_data.get("full_moon_name","Full Moon"))} {_when(moon_days_full)} — {esc(moon_full_date)}</div>
-          <div class="full-moon-alert-text">{esc(moon_full_lore)}</div>
-          {f'<div class="full-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_full_msg)}</div>' if mp_full_msg else ""}
-        </div>'''
-
-    new_moon_alert_html = ""
-    if moon_is_new:
-        new_moon_alert_html = f'''
-        <div class="new-moon-alert">
-          <div class="new-moon-alert-title">🌑 Tonight is the New Moon — set your intentions</div>
-          <div class="new-moon-alert-text">{esc(moon_new_lore)}</div>
-          {f'<div class="new-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_new_msg)}</div>' if mp_new_msg and moon_new_lore[:40] not in mp_new_msg else ""}
-        </div>'''
-    elif moon_new_soon:
-        new_moon_alert_html = f'''
-        <div class="new-moon-alert">
-          <div class="new-moon-alert-title">🌘 New Moon {_when(moon_days_new)} — {esc(moon_new_date)}</div>
-          <div class="new-moon-alert-text">{esc(moon_new_lore)}</div>
-          {f'<div class="new-moon-alert-text" style="margin-top:8px;font-style:italic;">{esc(mp_new_msg)}</div>' if mp_new_msg and moon_new_lore[:40] not in mp_new_msg else ""}
-        </div>'''
-
-    next_full_note = ""
-    if not moon_is_full and not moon_soon and not moon_is_new and not moon_new_soon:
-        days_note_parts = []
-        days_note_parts.append(f'Next full moon: <strong>{esc(moon_full_label)}</strong> — {moon_days_full:.0f} days away')
-        days_note_parts.append(f'Next new moon: <strong>{esc(moon_new_date)}</strong> — {_when(moon_days_new)}')
-        next_full_note = f'<div class="moon-text" style="margin-top:8px;color:#444;">{" · ".join(days_note_parts)}</div>'
-
+    # ── Moon: look up, work out the phase, reflect ───────────────────────────
+    moon_cells = "".join(
+        f'<div class="moon-cell"><div class="moon-cell-emoji">{sym}</div><div class="moon-cell-name">{esc(name)}</div>'
+        f'<div class="moon-cell-spot">{esc(spot)}</div><div class="moon-cell-kw">{esc(kw)}</div>'
+        f'<div class="moon-cell-q">{esc(q)}</div></div>'
+        for sym, name, spot, kw, q in MOON_PHASES)
     parts.append(f"""
 <div class="page flow"><div class="frame">
-  {section_title("tonight\'s sky", "Moon phase", "celestial check-in")}
+  {section_title("tonight\'s sky", "Which moon is it?", "look up")}
 
   <div class="moon-card">
-    <span class="moon-emoji">{moon_emoji}</span>
-    <div class="moon-phase-name">{esc(moon_phase_name)}</div>
-    <div class="moon-illumination">{moon_bar} {moon_illum}% illuminated · Day {moon_data.get("phase_day",0):.1f} of 29.5</div>
+    <div class="moon-text">Find the moon tonight, outside or through a window, and circle the one that matches. Can\'t see it? Go from the last one you remember: it moves one box along about every 3 to 4 days, and the whole loop takes 29.5.</div>
+    <div class="moon-grid">{moon_cells}</div>
+    <div class="moon-text" style="font-size:11.5px;color:#555;margin-bottom:0;">Growing night to night = waxing. Shrinking = waning. Each box has what the phase is about and the question it asks.</div>
+  </div>
 
-    <div class="moon-section-label">Energy &amp; meaning</div>
-    <div class="moon-text">{esc(mp_meaning)}</div>
-
-    <div class="moon-section-label">Keywords</div>
-    <div class="moon-text" style="font-style:italic;">{esc(moon_keywords)}</div>
-
-    <div class="moon-section-label">A thought</div>
-    <div class="moon-text">{esc(mp_spiritual)}</div>
-
-    <div class="moon-ritual">
-      <div class="moon-section-label">Tonight\'s ritual</div>
-      <div class="moon-ritual-text">{esc(mp_ritual)}</div>
+  <div class="split">
+    <div class="card">
+      <div class="mini-title">Draw what you see</div>
+      <div class="moon-draw"></div>
+      <div class="mini-note" style="text-align:center;">shade the dark part</div>
     </div>
-
-    {full_moon_alert_html}
-    {new_moon_alert_html}
-    {next_full_note}
+    <div class="card">
+      <div class="mini-title">Tonight it is</div>
+      <div class="moon-write-line"></div>
+      <div class="mini-title" style="margin-top:8px;">My answer to its question</div>
+      {''.join('<div class="moon-write-line"></div>' for _ in range(3))}
+    </div>
   </div>
 
   <div class="card">
     <div class="moon-reflection">
-      <div class="moon-reflection-q">✦ {esc(mp_reflect_q)}</div>
+      <div class="moon-reflection-q">✦ {esc(rotate(MOON_REFLECTIONS))}</div>
     </div>
     <div style="margin-top:6px;">
-      {''.join('<div class="moon-write-line"></div>' for _ in range(5))}
+      {''.join('<div class="moon-write-line"></div>' for _ in range(4))}
+    </div>
+    <div class="moon-ritual">
+      <div class="moon-section-label">A two-minute ritual</div>
+      <div class="moon-ritual-text">{esc(rotate(MOON_RITUALS))}</div>
     </div>
   </div>
   <div style="flex:1"></div>
@@ -2814,131 +2130,33 @@ def build_html(wb: dict) -> str:
 
 
     parts.append("<!--SECTION:cycle-->")
-    # ── Cycle page (inserted after moon page) ────────────────────────────────
-    cycle_avail      = cycle_data.get("available", False)
-    cycle_phase      = cycle_data.get("phase", {})
-    cycle_day        = cycle_data.get("cycle_day", 1)
-    cycle_avg        = cycle_data.get("cycle_length_avg", CYCLE_LENGTH_AVG)
-    cycle_phase_key  = cycle_data.get("phase_key", "")
-    days_in_phase    = cycle_data.get("days_in_phase", 1)
-    days_to_period   = cycle_data.get("days_until_next_period", 0)
-    days_to_ovul     = cycle_data.get("days_until_ovulation", 0)
-    period_soon      = cycle_data.get("period_coming_soon", False)
-    ovul_soon        = cycle_data.get("ovulation_soon", False)
-
-    if cycle_avail and cycle_phase:
-        p_name    = cycle_phase.get("name", "Unknown")
-        p_emoji   = cycle_phase.get("emoji", "🌀")
-        p_accent  = cycle_phase.get("accent", "#c8b8e8")
-        p_energy  = cycle_phase.get("energy", "")
-        p_kw      = cycle_phase.get("keywords", "")
-        p_desc    = cycle_phase.get("description", "")
-        p_tasks   = cycle_phase.get("task_tone", "")
-        p_ex      = cycle_phase.get("exercise", "")
-        p_food    = cycle_phase.get("foods", "")
-        p_emo     = cycle_phase.get("emotional", "")
-        p_pms     = cycle_phase.get("pms_warning", False)
-
-        # Cycle progress bar — 4 segments: menstrual / follicular / ovulatory / luteal
-        seg_keys   = ["menstrual", "follicular", "ovulatory", "luteal"]
-        active_seg = "luteal" if cycle_phase_key.startswith("luteal") else cycle_phase_key
-        seg_labels = ["Menstrual", "Follicular", "Ovulatory", "Luteal"]
-        bar_html = "".join(
-            f'<div class="cycle-bar-seg" style="background:{p_accent};border-color:{p_accent};" title="{l}"></div>'
-            if k == active_seg else f'<div class="cycle-bar-seg" title="{l}"></div>'
-            for k, l in zip(seg_keys, seg_labels))
-
-        # Alerts
-        alerts_html = ""
-        if period_soon:
-            alerts_html += f'''<div class="cycle-alert" style="border-color:#C8697A;">
-              <div class="cycle-alert-title">🌹 Period arriving {_when(days_to_period)}</div>
-              <div class="cycle-alert-text">Stock up on comfort supplies. Be extra gentle with your expectations over the next few days.</div>
-            </div>'''
-        if ovul_soon:
-            alerts_html += f'''<div class="cycle-alert" style="border-color:#E0A800;">
-              <div class="cycle-alert-title">☀️ Ovulation window {_when(days_to_ovul)}</div>
-              <div class="cycle-alert-text">Your peak energy window is coming. Plan your most important tasks or social moments for then.</div>
-            </div>'''
-        if p_pms:
-            alerts_html += f'''<div class="cycle-alert" style="border-color:#9B8EC4;">
-              <div class="cycle-alert-title">💜 PMS territory — be kind to yourself</div>
-              <div class="cycle-alert-text">What you're feeling is real and physiological. Don't make big decisions today. Rest is productive right now.</div>
-            </div>'''
-
-        parts.append(f"""
+    # ── Cycle: a reference for every phase; you mark where you are ───────────
+    def _first_sentence(text):
+        return text.split(". ")[0].rstrip(".") + "."
+    cycle_blocks = "".join(
+        f'''<div class="cycle-block" style="margin-bottom:8px;border-color:{ph["accent"]};">
+      <div class="cycle-block-title">{ph["emoji"]} {esc(ph["name"])} · {esc(ph["days"])} · {esc(ph["energy"])}</div>
+      <div class="cycle-block-text">{esc(ph["keywords"])}. {esc(_first_sentence(ph["task_tone"]))}</div>
+      <div class="cycle-block-text" style="color:#555;">🍵 {esc(ph.get("tea", {}).get("blend", ""))}</div>
+    </div>''' for ph in CYCLE_PHASES.values())
+    parts.append(f"""
 <div class="page flow"><div class="frame">
-  {section_title("inner season", "Cycle phase", "body wisdom")}
+  {section_title("inner season", "Where am I in my cycle?", "body wisdom")}
 
-  <div class="cycle-card" style="border-color:{p_accent};">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
-      <span style="font-size:36px;">{p_emoji}</span>
-      <div>
-        <div class="cycle-phase-name">{esc(p_name)}</div>
-        <div class="cycle-day-label">Cycle day {cycle_day} of ~{cycle_avg} · {esc(cycle_phase.get("days",""))}</div>
-      </div>
-    </div>
-
-    <div class="cycle-bar-wrap">{bar_html}</div>
-    <div style="font-size:11px;color:#555;font-family:monospace;margin-bottom:12px;">Menstrual · Follicular · Ovulatory · Luteal</div>
-
-    <div class="cycle-section-label">Energy &amp; phase</div>
-    <div class="cycle-text">{esc(p_energy)} — {esc(p_kw)}</div>
-
-    <div class="cycle-section-label">What this phase means</div>
-    <div class="cycle-text">{esc(p_desc)}</div>
-
-    <div class="cycle-row">
-      <div class="cycle-block">
-        <div class="cycle-block-title">Task tone today</div>
-        <div class="cycle-block-text">{esc(p_tasks)}</div>
-      </div>
-      <div class="cycle-block">
-        <div class="cycle-block-title">Exercise</div>
-        <div class="cycle-block-text">{esc(p_ex)}</div>
-      </div>
-    </div>
-
-    <div class="cycle-block" style="margin-bottom:10px;">
-      <div class="cycle-block-title">Food &amp; nourishment</div>
-      <div class="cycle-block-text">{esc(p_food)}</div>
-    </div>
-
-    <div class="cycle-block" style="margin-bottom:10px;">
-      <div class="cycle-block-title">🍵 Tea blend for today</div>
-      <div class="cycle-block-text" style="font-weight:800;margin-bottom:4px;">{esc(cycle_phase.get("tea",{}).get("blend",""))}</div>
-      <div class="cycle-block-text">{esc(cycle_phase.get("tea",{}).get("why",""))}</div>
-      <div class="cycle-block-text" style="font-style:italic;color:#444;margin-top:4px;">💡 {esc(cycle_phase.get("tea",{}).get("notes",""))}</div>
-    </div>
-
-    {alerts_html}
-
-    <div class="cycle-emotional">
-      <div class="cycle-emotional-q">💬 {esc(p_emo)}</div>
-      {''.join('<div class="cycle-write-line"></div>' for _ in range(2))}
-    </div>
-
-    <div class="cycle-text" style="margin:10px 0 0;">
-      <strong>Coming up:</strong>
-      {'🌹 Period in ' + str(days_to_period) + ' days' if days_to_period > 0 else '🌹 Period today or very soon'}{' · ☀️ Ovulation window in ' + str(days_to_ovul) + ' days (day ' + str(OVULATION_DAY) + '±2)' if days_to_ovul > 0 else ""}
-    </div>
-    <div class="cycle-day-label" style="margin:4px 0 0;font-size:10.5px;">Last period logged: {esc(cycle_data.get("last_period_start","unknown"))} · update with --log-period</div>
+  <div class="cycle-card">
+    <div class="cycle-text"><strong>Cycle day: ______</strong> &nbsp;(day 1 is the first day of your period; a full cycle runs about {CYCLE_LENGTH_AVG} days)</div>
+    <div class="cycle-text">Circle the phase that fits. Go by how you actually feel as much as by the day count.</div>
+    {cycle_blocks}
   </div>
-  <div style="flex:1"></div>
-</div></div>
-""")
 
-    else:
-        # No cycle data logged yet — prompt user to set it up
-        parts.append(f"""
-<div class="page flow"><div class="frame">
-  {section_title("inner season", "Cycle phase", "body wisdom")}
-  <div class="card" style="text-align:center;padding:30px 20px;">
-    <div style="font-size:36px;margin-bottom:12px;">🌹</div>
-    <div class="mini-title" style="color:#5d4085;">Set up cycle tracking</div>
-    <div class="footer-note" style="margin-bottom:16px;">Run this command when your next period starts to activate this section:</div>
-    <div style="background:#fff;border:1.5px solid #999;color:#222;font-family:monospace;font-size:13px;padding:12px 16px;border-radius:10px;display:inline-block;">python3 dailyWorkbookLocal.py --log-period</div>
-    <div class="footer-note" style="margin-top:12px;color:#aaa;">You can also log a past date: --log-period 2026-05-01</div>
+  <div class="card">
+    <div class="mini-title">For the phase I circled</div>
+    <div class="cycle-emotional-q">💬 What is my body asking for?</div>
+    {''.join('<div class="cycle-write-line"></div>' for _ in range(2))}
+    <div class="cycle-emotional-q" style="margin-top:8px;">How I\'ll pace this workbook</div>
+    <div>{chip("gentle")}{chip("steady")}{chip("push")}<span class="mini-note" style="margin-left:8px;">circle one</span></div>
+    <div class="cycle-emotional-q" style="margin-top:10px;">One kind thing I\'ll do for myself</div>
+    <div class="cycle-write-line"></div>
   </div>
   <div style="flex:1"></div>
 </div></div>
@@ -3283,10 +2501,10 @@ def build_html(wb: dict) -> str:
     return "\n".join(_reorder_sections(parts))
 
 
-# Order the printed sections. Gentle, outward-looking pages (weather, moon,
-# cycle) come before the brain-heavy study pages; answer keys stay at the back.
+# Order the printed sections. Gentle check-in pages (moon, cycle) come before
+# the brain-heavy study pages; answer keys stay at the back.
 SECTION_ORDER = [
-    "cover", "weather", "moon", "cycle",
+    "cover", "moon", "cycle",
     "cs311", "leetcode",
     "chores", "body", "offline",
     "reading", "chinese", "italian",
@@ -3315,7 +2533,7 @@ def _reorder_sections(parts: list[str]) -> list[str]:
 
 def save_workbook_html(wb: dict) -> Path:
     ensure_output_dir()
-    out_path = OUTPUT_DIR / f"daily-workbook-{today_stamp()}.html"
+    out_path = OUTPUT_DIR / f"workbook-{progression.label(WORKBOOK_NUM)}.html"
     out_path.write_text(build_html(normalize(wb)), encoding="utf-8")
     return out_path
 
@@ -3329,26 +2547,39 @@ def find_browser_binary() -> str | None:
     ]
     return next((str(c) for c in candidates if c and Path(c).exists()), None)
 
+def find_headless_shells() -> list[str]:
+    """Playwright's chrome-headless-shell builds, newest first.
+
+    Chrome 157 fails to print long workbooks ("Printing failed", no file), so
+    these are the fallback when the regular browser doesn't produce a PDF.
+    """
+    root = Path.home() / "Library" / "Caches" / "ms-playwright"
+    shells = root.glob("chromium_headless_shell-*/chrome-headless-shell-*/chrome-headless-shell")
+    return [str(p) for p in sorted(shells, key=lambda p: p.parts[-3], reverse=True)]
+
 def export_pdf(html_path: Path) -> Path | None:
-    browser = find_browser_binary()
-    if not browser:
+    browsers = [b for b in [find_browser_binary(), *find_headless_shells()] if b]
+    if not browsers:
         print("⚠ No Chrome/Chromium/Brave found. Skipping PDF export.")
         return None
     pdf_path = html_path.with_suffix(".pdf")
-    cmd = [browser, "--headless=new", "--disable-gpu", "--no-sandbox",
-           f"--print-to-pdf={pdf_path}", "--print-to-pdf-no-header",
-           str(html_path.resolve())]
-    try:
-        print("⏳ Exporting PDF...")
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    print("⏳ Exporting PDF...")
+    for browser in browsers:
+        pdf_path.unlink(missing_ok=True)
+        cmd = [browser, "--headless=new", "--disable-gpu", "--no-sandbox",
+               f"--print-to-pdf={pdf_path}", "--print-to-pdf-no-header", "--no-pdf-header-footer",
+               str(html_path.resolve())]
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=600)
+        except Exception as e:
+            print(f"⚠ PDF export with {Path(browser).name} failed: {e}")
+            continue
         if pdf_path.exists() and pdf_path.stat().st_size > 0:
-            print(f"✓ PDF saved: {pdf_path}")
+            print(f"✓ PDF saved: {pdf_path} ({Path(browser).name})")
             return pdf_path
-        print("⚠ PDF command ran but no file created.")
-        return None
-    except Exception as e:
-        print(f"⚠ PDF export failed: {e}")
-        return None
+        print(f"⚠ {Path(browser).name} ran but made no PDF; trying the next browser.")
+    print("⚠ PDF export failed with every browser.")
+    return None
 
 def send_email(subject, body, attachments):
     if not GMAIL_APP_PASSWORD:
@@ -3373,26 +2604,24 @@ def send_email(subject, body, attachments):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    # Handle --log-period CLI flag
-    if "--log-period" in sys.argv:
-        idx = sys.argv.index("--log-period")
-        date_arg = sys.argv[idx + 1] if idx + 1 < len(sys.argv) and not sys.argv[idx+1].startswith("-") else None
-        log_period_start(date_arg)
-        return
-
-    # --date YYYY-MM-DD builds the workbook for that day (used by print_batch.py)
-    global WORKBOOK_DATE
-    if "--date" in sys.argv:
-        idx = sys.argv.index("--date")
+    # --number N rebuilds workbook N (same problems, words and article as
+    # before); with no number, the next workbook in the progression is built.
+    global WORKBOOK_NUM
+    WORKBOOK_NUM = progression.next_number()
+    if "--number" in sys.argv:
+        idx = sys.argv.index("--number")
         try:
-            WORKBOOK_DATE = datetime.strptime(sys.argv[idx + 1], "%Y-%m-%d").date()
+            WORKBOOK_NUM = int(sys.argv[idx + 1])
+            if not 1 <= WORKBOOK_NUM <= progression.next_number():
+                raise ValueError
         except (IndexError, ValueError):
-            print("✗ --date needs a date like 2026-11-10"); return 1
+            print(f"✗ --number needs a workbook from 1 to {progression.next_number()} (the next new one)")
+            return 1
     # --no-open: don't open Preview, and exit non-zero if no PDF was made
     no_open = "--no-open" in sys.argv
 
-    print(f"\n🖍  Daily Workbook Generator — Whimsical Edition")
-    print(f"   {today_label()}\n")
+    print(f"\n🖍  Workbook Generator — Whimsical Edition")
+    print(f"   {workbook_label()}\n")
 
     try:
         wb = generate_workbook_content()
@@ -3403,8 +2632,7 @@ def main():
     try:
         update_hsk_progress(
             progress=wb.get("_progress") or load_hsk_progress(),
-            day_num=wb["day_num"], date_str=wb["_today_date"],
-            today_pack=wb["_hsk_internal"],
+            day_num=wb["day_num"], today_pack=wb["_hsk_internal"],
         )
         print("✓ HSK progress updated")
     except Exception as e:
@@ -3412,6 +2640,7 @@ def main():
 
     try:
         html_path = save_workbook_html(wb)
+        progression.mark_built(wb["day_num"])
         print(f"✓ HTML saved: {html_path}")
     except Exception as e:
         print(f"✗ Save failed: {e}"); traceback.print_exc(); return 1

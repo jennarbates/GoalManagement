@@ -9,10 +9,10 @@ exercises, a "Before you stop" box, a chapter review when the day finishes a
 chapter, and a Vocabolario page with that day's words. The answer key is
 separate (answer_pages) so the workbook can print it at the very back.
 
-Progress lives in italian_progress.json: {"by_date": {"YYYY-MM-DD": day_number}}.
+Progress lives in italian_progress.json: {"by_workbook": {"workbook number": day_number}}.
 Set ITALIAN_PROGRESS_FILE (or italian.PROGRESS_FILE) to use another file.
 
-    python3 italian.py                 # today's day (doesn't mark anything)
+    python3 italian.py                 # the next workbook's day (doesn't mark anything)
     python3 italian.py plan            # how the course splits into days
     python3 italian.py status          # which days have been printed
     python3 italian.py preview 3 out.html   # a standalone page for day 3
@@ -28,7 +28,7 @@ import math
 import os
 import re
 import sys
-from datetime import date, datetime
+
 from functools import lru_cache
 from pathlib import Path
 
@@ -149,46 +149,48 @@ def _progress_path() -> Path:
 def load_progress() -> dict:
     try:
         p = json.loads(_progress_path().read_text(encoding="utf-8"))
-        p.setdefault("by_date", {})
-        return p
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"by_date": {}}
+        p = {}
+    p.setdefault("by_workbook", {})
+    return p
 
 
 def save_progress(p: dict) -> None:
     _progress_path().write_text(json.dumps(p, indent=2) + "\n", encoding="utf-8")
 
 
-def daily_set(day: date | None = None, mark: bool = True) -> dict:
-    """The next unprinted day of the course (the same one when rerun on the same date).
+def daily_set(workbook: int | None = None, mark: bool = True) -> dict:
+    """The next unprinted day of the course (the same one when a workbook is rebuilt).
 
-    Returns {"done": True, ...} once every day has been printed.
+    workbook is the workbook number it goes in (default: the next one to be
+    built). Returns {"done": True, ...} once every day has been printed.
     """
-    day = day or date.today()
-    key = day.isoformat()
+    if workbook is None:
+        import progression
+        workbook = progression.next_number()
+    key = str(workbook)
     course = load_course()
     plan = plan_days(course)
     progress = load_progress()
-    by_date = progress["by_date"]
+    by_wb = progress["by_workbook"]
 
-    n = by_date.get(key)
+    n = by_wb.get(key)
     if not isinstance(n, int) or not 1 <= n <= len(plan):
-        done = {v for v in by_date.values() if isinstance(v, int)}
+        done = {v for v in by_wb.values() if isinstance(v, int)}
         n = next((p["day"] for p in plan if p["day"] not in done), None)
         if n is None:
-            return {"done": True, "date": key, "day": None, "total_days": len(plan),
+            return {"done": True, "day": None, "total_days": len(plan),
                     "title": course["title"], "attribution": ATTRIBUTION}
         if mark:
-            by_date[key] = n
+            by_wb[key] = n
             save_progress(progress)
-    return day_set_for(n, day, course, plan)
+    return day_set_for(n, course, plan)
 
 
-def day_set_for(n: int, day: date | None = None, course: dict | None = None, plan: list | None = None) -> dict:
+def day_set_for(n: int, course: dict | None = None, plan: list | None = None) -> dict:
     """Everything render() needs for day n (1-based), without touching progress."""
     course = course or load_course()
     plan = plan or plan_days(course)
-    day = day or date.today()
     p = plan[n - 1]
     by_id = {s["id"]: s for s in _sections(course)}
     sections = [by_id[i] for i in p["section_ids"]]
@@ -199,7 +201,6 @@ def day_set_for(n: int, day: date | None = None, course: dict | None = None, pla
               for c in p["finishes_chapters"]]
     return {
         "done": False,
-        "date": day.isoformat(),
         "day": n,
         "total_days": len(plan),
         "title": course["title"],
@@ -485,14 +486,12 @@ def _fill_items_answers(ex: dict) -> list[list[list[str]]]:
     return [[p["blank"] for p in it["parts"] if isinstance(p, dict)] for it in ex["items"]]
 
 
-def _weekday_answer(a: str, day: date) -> str:
-    m = re.fullmatch(r"@weekday\+(\d+)", a)
-    if not m:
-        return a
-    return WEEKDAYS_IT[(day.weekday() + int(m.group(1))) % 7]
+def _weekday_answer(a: str) -> str:
+    """"@weekday+N" answers depend on the day the page is done; size the blank for any weekday."""
+    return max(WEEKDAYS_IT, key=len) if a.startswith("@weekday") else a
 
 
-def exercise_units(ex: dict, letter: str, day: date) -> list[Unit]:
+def exercise_units(ex: dict, letter: str) -> list[Unit]:
     t = ex["type"]
     say_aloud = t == "open"
     head = (f'<div class="it-ex-head"><span class="it-letter">{letter}</span>'
@@ -561,7 +560,7 @@ def exercise_units(ex: dict, letter: str, day: date) -> list[Unit]:
                 parts, w = [], 0.0
                 for i, p in enumerate(it["parts"]):
                     if isinstance(p, dict):
-                        ans = [_weekday_answer(a, day) for a in p["blank"]]
+                        ans = [_weekday_answer(a) for a in p["blank"]]
                         parts.append(blank(ans))
                         w += blank_w(ans) + 8
                     else:
@@ -643,7 +642,7 @@ def _show_alts(alts: list[str], keep: int = 2) -> str:
     return " / ".join(esc(a) for a in shown[:keep])
 
 
-def answer_html(ex: dict, label: str, day: date) -> tuple[str, float]:
+def answer_html(ex: dict, label: str) -> tuple[str, float]:
     t = ex["type"]
     head = f'<div class="it-ans-h"><b>{label}</b> <i>{ex["title"]}</i></div>'
     body = ""
@@ -653,9 +652,8 @@ def answer_html(ex: dict, label: str, day: date) -> tuple[str, float]:
     elif t == "fill":
         blanks = _fill_items_answers(ex)
         if any("@weekday" in a for b in blanks for alts in b for a in alts):
-            ans = ", ".join(_weekday_answer(alts[0], day) for b in blanks for alts in b)
-            body = (f"<i>Depends on the day. Printed for {WEEKDAYS_IT[day.weekday()]} "
-                    f"{day.day}/{day.month}:</i> {esc(ans)}")
+            body = ("<i>Depends on the day you do it. Count on from today in this order:</i> "
+                    + esc(", ".join(WEEKDAYS_IT)))
         elif ex.get("paragraph"):
             flat = [alts for b in blanks for alts in b]
             body = "  ".join(f"<b>{n}</b>&nbsp;{_show_alts(a)}" for n, a in enumerate(flat, 1))
@@ -682,10 +680,6 @@ def answer_html(ex: dict, label: str, day: date) -> tuple[str, float]:
 
 
 # ── Pages ────────────────────────────────────────────────────────────────────
-
-def _long_date(d: date) -> str:
-    return f"{d:%A}, {d:%B} {d.day}"
-
 
 def _goal_as_i_can(g: str) -> str:
     g = re.sub(r"\byourself\b", "myself", g)
@@ -734,7 +728,7 @@ def _vocab_units(vocab: list[dict]) -> list[Unit]:
     return units
 
 
-def lesson_units(ds: dict, day: date) -> list[Unit]:
+def lesson_units(ds: dict) -> list[Unit]:
     secs = ds["sections"]
     checks = "".join(f'<span class="it-todo"><span class="it-box"></span>{esc(s["id"])} {s["title"]}</span>'
                      for s in secs)
@@ -743,7 +737,7 @@ def lesson_units(ds: dict, day: date) -> list[Unit]:
     todo_w = [chip_w(s["id"] + " " + _plain(s["title"]), 6.9) + 10 for s in secs] + [140]
     units = [Unit(
         section_title(f"Italiano · Tutt* a tavola! · day {ds['day']} of {ds['total_days']}",
-                      f"Giorno {ds['day']}", esc(_long_date(day)))
+                      f"Giorno {ds['day']}", "data: ____ / ____")
         + f'<div class="it-daysub">{esc(ds["subtitle"])}</div>'
         + f'<div class="card it-today"><div><b>Today:</b> sections {esc(sec_list)} · {ds["exercise_count"]} exercises'
           f' · about {esc(ds["minutes"])} minutes</div><div class="it-todos">{checks}</div>'
@@ -756,7 +750,7 @@ def lesson_units(ds: dict, day: date) -> list[Unit]:
         units.append(Unit(section_title(label, f'{esc(s["id"])} {s["title"]}', s["subtitle"]), 74, keep=True))
         units.extend(_lesson_units(s))
         for i, ex in enumerate(s["exercises"]):
-            units.extend(exercise_units(ex, chr(65 + i), day))
+            units.extend(exercise_units(ex, chr(65 + i)))
         for b in s.get("after", []):
             x, h = block_html(b, CONTENT_W)
             units.append(Unit(x, h + 4))
@@ -777,12 +771,12 @@ def lesson_units(ds: dict, day: date) -> list[Unit]:
     return units
 
 
-def answer_units(ds: dict, day: date) -> list[Unit]:
+def answer_units(ds: dict) -> list[Unit]:
     units = [Unit(section_title(f"Italiano · day {ds['day']} · answer key", "Risposte",
                                 "a missing accent is close, but still learn where it goes"), 66)]
     for s in ds["sections"]:
         for i, ex in enumerate(s["exercises"]):
-            x, h = answer_html(ex, f'{s["id"]} {chr(65 + i)}', day)
+            x, h = answer_html(ex, f'{s["id"]} {chr(65 + i)}')
             units.append(Unit(x, h))
     return units
 
@@ -805,10 +799,9 @@ def render(day_set: dict) -> dict:
     """
     if day_set.get("done"):
         return _done_pages()
-    day = datetime.strptime(day_set["date"], "%Y-%m-%d").date()
     n = day_set["day"]
-    lesson = pack(lesson_units(day_set, day))
-    answers = pack(answer_units(day_set, day))
+    lesson = pack(lesson_units(day_set))
+    answers = pack(answer_units(day_set))
     total = len(lesson)
     lesson_pages = [page_html(p, f"Italiano · Day {n} · page {i} of {total} · {ATTRIBUTION_HTML}")
                     for i, p in enumerate(lesson, 1)]
@@ -980,7 +973,7 @@ def _print_day(ds: dict) -> None:
     if ds.get("done"):
         print(f"All {ds['total_days']} days of {ds['title']} have been printed.")
         return
-    print(f"Italiano day {ds['day']} of {ds['total_days']} ({ds['date']}): sections {', '.join(ds['section_ids'])}"
+    print(f"Italiano day {ds['day']} of {ds['total_days']}: sections {', '.join(ds['section_ids'])}"
           f" · {ds['exercise_count']} exercises · about {ds['minutes']} minutes")
     for s in ds["sections"]:
         print(f"  {s['id']} {_plain(s['title'])} — {_plain(s['subtitle'])} ({len(s['exercises'])} exercises)")
@@ -991,8 +984,8 @@ def _print_day(ds: dict) -> None:
 
 
 def main(argv: list[str]) -> int:
-    cmd = argv[0] if argv else "today"
-    if cmd == "today":
+    cmd = argv[0] if argv else "next"
+    if cmd in ("next", "today"):
         _print_day(daily_set(mark=False))
     elif cmd == "plan":
         course = load_course()
@@ -1002,11 +995,11 @@ def main(argv: list[str]) -> int:
                   + (f" · finishes chapter {', '.join(map(str, p['finishes_chapters']))}" if p["finishes_chapters"] else "")
                   + f"\n        vocab: {', '.join(g['group'] for g in ds['vocab']) or '—'}")
     elif cmd == "status":
-        by_date = load_progress()["by_date"]
+        by_wb = load_progress()["by_workbook"]
         total = len(plan_days())
-        print(f"{len(set(by_date.values()))} of {total} days printed")
-        for d, n in sorted(by_date.items()):
-            print(f"  {d}: day {n}")
+        print(f"{len(set(by_wb.values()))} of {total} days printed")
+        for w, n in sorted(by_wb.items(), key=lambda kv: int(kv[0])):
+            print(f"  workbook {w}: day {n}")
     elif cmd == "preview":
         n = int(argv[1]) if len(argv) > 1 else 1
         out = Path(argv[2]) if len(argv) > 2 else Path(f"italian-day-{n}.html")

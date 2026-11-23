@@ -1,14 +1,12 @@
 #pragma once
 
-// ── When to print ────────────────────────────────────────────────────────────
-#define PRINT_HOUR        6
-#define PRINT_MINUTE      30
-// If the printer is off or busy, keep retrying for this long, then give up
-// for the day (so a workbook never comes out in the afternoon).
-#define PRINT_WINDOW_MIN  180
-#define RETRY_EVERY_MIN   10
+// ── Printing ─────────────────────────────────────────────────────────────────
+// Nothing prints on a schedule. After "print next" succeeds, further requests
+// are refused for this long, so a double tap can't print two workbooks.
+#define PRINT_NEXT_COOLDOWN_S  180
 
-// POSIX time zone for America/New_York (handles daylight saving)
+// POSIX time zone for America/New_York (handles daylight saving). The clock is
+// only used to timestamp the log and the "last result" line.
 #define TZ_INFO "EST5EDT,M3.2.0,M11.1.0"
 
 // ── Printer (HP ENVY Inspire 7900, found with ippfind on the Mac) ────────────

@@ -1,26 +1,29 @@
 # Workbook printer (ESP32)
 
-Prints each morning's workbook on the HP ENVY Inspire 7900 without the Mac
-being on.
+Prints the next workbook on the HP ENVY Inspire 7900 when you ask for it,
+without the Mac being on.
 
 ```
-Mac, once a week                         ESP32, every morning at 06:30
-────────────────                         ─────────────────────────────
-print_batch.py  → 7 × YYYY-MM-DD.pclm    reads today's file from microSD
-push_to_esp.py  → uploads over Wi-Fi  →  sends it to the HP over Wi-Fi (IPP)
+Mac, whenever the queue runs low          ESP32, when you tap "Print next workbook"
+────────────────────────────────          ─────────────────────────────────────────
+print_batch.py  → NNN.pclm, numbered      takes the lowest-numbered file on the microSD
+push_to_esp.py  → uploads over Wi-Fi  →   sends it to the HP over Wi-Fi (IPP), then removes it
 ```
 
-The HP doesn't accept PDFs over the network, so the Mac converts each day to
-PCLm (a raster format the HP lists as supported) ahead of time. The ESP32 just
-stores the files and sends the right one at the right time. Its clock comes
-from the internet (NTP) and handles daylight saving.
+Workbooks are numbered, not dated, so nothing prints on a schedule and nothing
+goes stale: workbook 4 waits on the card until workbook 3 is done and you ask
+for the next one.
+
+The HP doesn't accept PDFs over the network, so the Mac converts each workbook
+to PCLm (a raster format the HP lists as supported) ahead of time. The ESP32
+just stores the files and sends the next one when asked.
 
 ## Parts (~$20)
 
 - **Any ESP32 dev board.** Printing is over Wi-Fi, so it doesn't need USB host;
   an ESP32-S3-DevKitC-1 or a classic ESP32 DevKit both work.
 - **microSD card module (SPI)** and a **microSD card**, 8–32 GB, formatted
-  **FAT32**. A week is about 70 MB.
+  **FAT32**. Seven workbooks are about 70 MB.
 - A USB power supply and cable, and 6 jumper wires.
 
 ## Wiring
@@ -46,8 +49,11 @@ pio run -e esp32-s3 -t upload      # classic ESP32: -e esp32
 pio device monitor                 # shows its IP, SD card status and clock
 ```
 
-The ESP32 only joins **2.4 GHz** Wi-Fi. Print time, time zone and the printer's
-address are in `include/config.h`.
+The ESP32 only joins **2.4 GHz** Wi-Fi. The printer's address is in
+`include/config.h`.
+
+Coming from the old dated firmware? Flash this one the same way. On its first
+boot it clears the old `YYYY-MM-DD.pclm` files off the card.
 
 ## First run: check it actually prints
 
@@ -55,33 +61,41 @@ From `daily-workbook/`:
 
 ```bash
 python3 push_to_esp.py check-printer    # asks the HP if it accepts the job (prints nothing)
-python3 push_to_esp.py                  # upload the week
-python3 push_to_esp.py test-print 2026-11-10 --pages 1-1   # one real page
+python3 push_to_esp.py                  # upload the queued workbooks
+python3 push_to_esp.py test-print 1 --pages 1-1   # one real page of workbook 1
 ```
 
-## Every week
+## Printing the next workbook
+
+Open `http://workbook-printer.local` on your phone or laptop and tap
+**Print next workbook**, or from the Mac:
+
+```bash
+python3 push_to_esp.py print-next
+```
+
+## When the queue runs low
 
 ```bash
 cd daily-workbook
-HF_HUB_OFFLINE=1 ../.venv/bin/python print_batch.py   # build the next 7 days
+HF_HUB_OFFLINE=1 ../.venv/bin/python print_batch.py   # build the next 7 workbooks
 python3 push_to_esp.py                                # send them to the ESP32
-python3 push_to_esp.py status                         # what it has, what it last did
+python3 push_to_esp.py status                         # what's queued, what it last did
 ```
-
-Or open `http://workbook-printer.local` in a browser for the same status.
 
 ## How it behaves
 
-- At 06:30 it prints today's file once. If the printer doesn't answer, it
-  retries every 10 minutes until 09:30, then gives up for the day.
-- It remembers the last day it printed, so a reboot won't print twice.
-- Files for past days are deleted after each print.
-- If there's no file for today it prints nothing; `status` shows
-  "no print file for …".
+- It prints only when asked. "Print next" sends the lowest-numbered workbook
+  on the card and, once the printer accepts it, removes that file.
+- It remembers the last workbook it printed, so a reboot doesn't lose its place.
+- For a few minutes after a print it refuses another "print next", so a double
+  tap can't print two workbooks.
+- If the printer doesn't answer, nothing is removed: fix the printer and ask again.
+- `test-print` prints pages of a queued workbook without taking it off the queue.
 
 ## Things to know
 
-- **Paper:** a day is 45–55 pages, and the HP's tray holds about 125 sheets.
+- **Paper:** a workbook is 45–55 pages, and the HP's tray holds about 125 sheets.
 - **Two-sided printing** (`PRINTER_SIDES` in `config.h`) isn't tested. The HP
   expects back pages of PCLm pre-rotated, and Ghostscript doesn't do that, so
   backs may come out upside down. Try `test-print … --pages 1-2` before

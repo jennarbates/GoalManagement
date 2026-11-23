@@ -1,6 +1,5 @@
 {
-  "by_date": {
-    "2026-11-09": "contains-duplicate",
-    "2026-11-10": "valid-anagram"
+  "by_workbook": {
+    "1": "contains-duplicate"
   }
 }

@@ -1,14 +1,17 @@
 // Workbook printer
 //
-// Keeps a week of workbook print files (YYYY-MM-DD.pclm, made on the Mac by
-// print_batch.py and uploaded by push_to_esp.py) on a microSD card, and at
-// PRINT_HOUR:PRINT_MINUTE sends today's to the HP over Wi-Fi with IPP.
+// Keeps a queue of numbered workbook print files (NNN.pclm, made on the Mac by
+// print_batch.py and uploaded by push_to_esp.py) on a microSD card. Nothing
+// prints on a schedule: when asked, it sends the lowest-numbered file to the
+// HP over Wi-Fi with IPP, then removes it so the next request gets the next one.
 //
 // HTTP API (port 80, http://workbook-printer.local):
-//   GET    /                       status JSON: clock, files, last print
+//   GET    /                       a small page with a "Print next workbook" button
+//   GET    /status                 status JSON: files, next workbook, last print
 //   PUT    /files/<name>           upload a file (raw body)
 //   DELETE /files/<name>           delete a file
-//   POST   /print/<date>/<pages>   print now; pages = "all" or e.g. "1-1"
+//   POST   /print/next             print the next workbook and take it off the queue
+//   POST   /print/<number>/<pages> print now, keep the file; pages = "all" or e.g. "1-1"
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -32,11 +35,9 @@ static WebServer server(80);
 static Preferences prefs;
 
 static bool   sdOk = false;
-static String lastPrinted;              // date of the last successful scheduled print
+static int    lastPrinted = 0;          // number of the last workbook printed with "print next"
 static String lastResult = "nothing printed since boot";
-static String attemptsDate;
-static int    attemptsToday = 0;
-static uint32_t lastAttemptMs = 0;
+static uint32_t lastPrintMs = 0;        // when "print next" last succeeded (0 = not since boot)
 
 // ── Small helpers ────────────────────────────────────────────────────────────
 
@@ -47,20 +48,39 @@ static String fmtTime(time_t t, const char* fmt) {
   char b[40]; strftime(b, sizeof b, fmt, &tm);
   return b;
 }
-static String today() { return fmtTime(time(nullptr), "%Y-%m-%d"); }
-
-static bool isDate(const String& s) {
-  if (s.length() != 10) return false;
-  for (int i = 0; i < 10; i++) {
-    char c = s[i];
-    if (i == 4 || i == 7) { if (c != '-') return false; }
-    else if (!isDigit(c)) return false;
-  }
-  return true;
+// A workbook number: 1 to 4 digits, not zero. Returns 0 if it isn't one.
+static int parseNumber(const String& s) {
+  if (s.length() < 1 || s.length() > 4) return 0;
+  for (char c : s) if (!isDigit(c)) return 0;
+  return s.toInt();
+}
+// Print files are named by workbook number, zero-padded: 007.pclm
+static String fileFor(int number) {
+  char b[16]; snprintf(b, sizeof b, "%03d.pclm", number);
+  return b;
+}
+static int numberOf(const String& name) {
+  return name.endsWith(".pclm") ? parseNumber(name.substring(0, name.length() - 5)) : 0;
 }
 // Only these names may be written to the card — nothing with a path in it.
 static bool validName(const String& n) {
-  return n == "manifest.json" || (n.endsWith(".pclm") && isDate(n.substring(0, n.length() - 5)));
+  return n == "manifest.json" || (numberOf(n) > 0 && n == fileFor(numberOf(n)));
+}
+
+// The lowest-numbered workbook on the card, or 0 if the queue is empty.
+static int nextQueued() {
+  if (!sdOk) return 0;
+  int best = 0;
+  File root = SD.open("/");
+  for (File e = root.openNextFile(); e; e = root.openNextFile()) {
+    String n = e.name();
+    if (n.startsWith("/")) n = n.substring(1);
+    int num = (!e.isDirectory() && validName(n)) ? numberOf(n) : 0;
+    if (num > 0 && (best == 0 || num < best)) best = num;
+    e.close();
+  }
+  root.close();
+  return best;
 }
 
 static String jsonEsc(const String& s) {
@@ -154,13 +174,14 @@ static bool readBytes(WiFiClient& c, uint8_t* out, size_t n, uint32_t timeoutMs)
   return got == n;
 }
 
-// Prints /<date>.pclm. pages "all" or "A-B". Returns true when the printer
+// Prints workbook <number>. pages "all" or "A-B". Returns true when the printer
 // accepted the job; the reason either way goes into lastResult.
-static bool printDay(const String& date, const String& pages) {
-  String path = "/" + date + ".pclm";
+static bool printWorkbook(int number, const String& pages) {
+  String label = "workbook " + String(number);
+  String path = "/" + fileFor(number);
   if (!sdOk) { lastResult = "no SD card"; return false; }
   File f = SD.open(path, FILE_READ);
-  if (!f) { lastResult = "no print file for " + date; return false; }
+  if (!f) { lastResult = "no print file for " + label; return false; }
 
   int lo = 0, hi = 0;
   if (pages != "all" && sscanf(pages.c_str(), "%d-%d", &lo, &hi) != 2) {
@@ -170,7 +191,7 @@ static bool printDay(const String& date, const String& pages) {
   IPAddress ip = resolvePrinter();
   if (ip == IPAddress(0, 0, 0, 0)) { f.close(); lastResult = "can't find printer " PRINTER_HOST; return false; }
 
-  auto head = printJobRequest("Workbook " + date, lo, hi);
+  auto head = printJobRequest("Workbook " + String(number), lo, hi);
   size_t total = head.size() + f.size();
   logf("printing %s (%u bytes, pages %s) to %s", path.c_str(), (unsigned)f.size(), pages.c_str(), ip.toString().c_str());
 
@@ -222,56 +243,25 @@ static bool printDay(const String& date, const String& pages) {
     lastResult = "printer refused the job (IPP status " + String(hex) + ")";
     return false;
   }
-  lastResult = "printed " + date + (pages == "all" ? "" : " pages " + pages) + " at " + fmtTime(time(nullptr), "%H:%M");
+  lastResult = "sent " + label + (pages == "all" ? "" : " pages " + pages) + " to the printer"
+             + (clockSet() ? " at " + fmtTime(time(nullptr), "%b %d %H:%M") : String(""));
   logf("%s", lastResult.c_str());
   return true;
 }
 
-// Remove print files for days that have passed.
-static void cleanupOld() {
-  if (!sdOk || !clockSet()) return;
-  String t = today();
+// Remove files left over from the old dated firmware (YYYY-MM-DD.pclm).
+static void removeDatedFiles() {
+  if (!sdOk) return;
   File root = SD.open("/");
   std::vector<String> old;
   for (File e = root.openNextFile(); e; e = root.openNextFile()) {
     String n = e.name();
     if (n.startsWith("/")) n = n.substring(1);
-    if (n.endsWith(".pclm") && validName(n) && n.substring(0, 10) < t) old.push_back(n);
+    if (n.endsWith(".pclm") && n.length() == 15 && n[4] == '-' && n[7] == '-') old.push_back(n);
     e.close();
   }
   root.close();
-  for (auto& n : old) { SD.remove("/" + n); logf("removed old %s", n.c_str()); }
-}
-
-// ── Schedule ─────────────────────────────────────────────────────────────────
-
-static void checkSchedule() {
-  if (!clockSet()) return;
-  time_t now = time(nullptr);
-  struct tm tm; localtime_r(&now, &tm);
-  String t = today();
-  if (lastPrinted == t) return;
-
-  int minute = tm.tm_hour * 60 + tm.tm_min;
-  int start  = PRINT_HOUR * 60 + PRINT_MINUTE;
-  if (minute < start || minute > start + PRINT_WINDOW_MIN) return;
-
-  if (attemptsDate != t) { attemptsDate = t; attemptsToday = 0; }
-  if (attemptsToday > 0 && millis() - lastAttemptMs < RETRY_EVERY_MIN * 60000UL) return;
-  if (!SD.exists("/" + t + ".pclm")) {
-    if (attemptsToday == 0) { lastResult = "no print file for " + t; logf("%s", lastResult.c_str()); }
-    attemptsToday++; lastAttemptMs = millis();
-    return;
-  }
-
-  attemptsToday++; lastAttemptMs = millis();
-  if (printDay(t, "all")) {
-    lastPrinted = t;
-    prefs.putString("lastPrinted", t);   // survives a reboot, so it never prints twice
-    cleanupOld();
-  } else {
-    logf("attempt %d failed: %s", attemptsToday, lastResult.c_str());
-  }
+  for (auto& n : old) { SD.remove("/" + n); logf("removed old dated file %s", n.c_str()); }
 }
 
 // ── HTTP handlers ────────────────────────────────────────────────────────────
@@ -294,12 +284,11 @@ static void handleStatus() {
     root.close();
   }
   files += "]";
-  char printAt[6]; snprintf(printAt, sizeof printAt, "%02d:%02d", PRINT_HOUR, PRINT_MINUTE);
   String s = "{";
   s += "\"clock\":\"" + (clockSet() ? fmtTime(time(nullptr), "%Y-%m-%d %H:%M:%S %Z") : String("not set yet")) + "\",";
-  s += "\"print_time\":\"" + String(printAt) + "\",";
   s += "\"printer\":\"" PRINTER_HOST "\",";
-  s += "\"last_printed\":\"" + lastPrinted + "\",";
+  s += "\"next\":" + String(nextQueued()) + ",";
+  s += "\"last_printed\":" + String(lastPrinted) + ",";
   s += "\"last_result\":\"" + jsonEsc(lastResult) + "\",";
   s += "\"sd_ok\":" + String(sdOk ? "true" : "false") + ",";
   s += "\"free_bytes\":" + String(sdOk ? (double)(SD.totalBytes() - SD.usedBytes()) : 0.0, 0) + ",";
@@ -345,11 +334,80 @@ static void handleDelete() {
 }
 
 static void handlePrint() {
-  String date = server.pathArg(0), pages = server.pathArg(1);
-  if (!isDate(date)) { sendJson(400, "{\"error\":\"date must be YYYY-MM-DD\"}"); return; }
-  bool ok = printDay(date, pages);
+  int number = parseNumber(server.pathArg(0));
+  String pages = server.pathArg(1);
+  if (number == 0) { sendJson(400, "{\"error\":\"workbook must be a number\"}"); return; }
+  bool ok = printWorkbook(number, pages);
   sendJson(ok ? 200 : 502, "{\"ok\":" + String(ok ? "true" : "false") + ",\"result\":\"" + jsonEsc(lastResult) + "\"}");
 }
+
+// Print the lowest-numbered workbook, then take it off the queue so the next
+// request prints the one after it.
+static void handlePrintNext() {
+  // A second tap right after the first would print two workbooks in a row.
+  if (lastPrintMs != 0 && millis() - lastPrintMs < PRINT_NEXT_COOLDOWN_S * 1000UL) {
+    sendJson(409, "{\"ok\":false,\"result\":\"workbook " + String(lastPrinted) + " was just sent to the printer; wait a few minutes before asking for another\"}");
+    return;
+  }
+  int number = nextQueued();
+  if (number == 0) {
+    lastResult = sdOk ? "nothing queued: build and upload more workbooks from the Mac" : "no SD card";
+    sendJson(404, "{\"ok\":false,\"result\":\"" + jsonEsc(lastResult) + "\"}");
+    return;
+  }
+  bool ok = printWorkbook(number, "all");
+  if (ok) {
+    lastPrinted = number;
+    lastPrintMs = millis() | 1;
+    prefs.putInt("lastNum", number);     // survives a reboot
+    SD.remove("/" + fileFor(number));
+  }
+  sendJson(ok ? 200 : 502, "{\"ok\":" + String(ok ? "true" : "false") + ",\"number\":" + String(number)
+           + ",\"result\":\"" + jsonEsc(lastResult) + "\"}");
+}
+
+static const char HOME_PAGE[] PROGMEM = R"HTML(<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workbook printer</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 26rem; margin: 2rem auto; padding: 0 1rem; color: #2b2540; background: #fffaf3; }
+  h1 { font-size: 1.3rem; }
+  button { font-size: 1.15rem; width: 100%; padding: 1rem; border: 2px solid #9B8EC4; border-radius: 14px; background: #f3efff; color: #2b2540; }
+  button:disabled { opacity: .5; }
+  p { line-height: 1.5; }
+  #msg { font-weight: 600; }
+  small { color: #777; }
+</style></head><body>
+<h1>Workbook printer</h1>
+<p id="next">Checking the queue…</p>
+<button id="go" disabled>Print next workbook</button>
+<p id="msg"></p>
+<p><small id="detail"></small></p>
+<script>
+const $ = id => document.getElementById(id);
+async function refresh() {
+  try {
+    const s = await (await fetch('/status')).json();
+    const queued = s.files.filter(f => f.name.endsWith('.pclm')).length;
+    $('next').textContent = s.next ? `Next up: workbook ${s.next} (${queued} queued)` : 'Nothing queued. Build and upload more from the Mac.';
+    $('go').disabled = !s.next;
+    $('detail').textContent = `Last printed: ${s.last_printed ? 'workbook ' + s.last_printed : 'none yet'}. ${s.last_result}.`;
+  } catch (e) { $('next').textContent = 'Could not read the status.'; }
+}
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  $('msg').textContent = 'Sending to the printer… this takes a few minutes. Keep this page open.';
+  try {
+    const r = await (await fetch('/print/next', {method: 'POST'})).json();
+    $('msg').textContent = (r.ok ? 'Done: ' : 'Did not print: ') + r.result;
+  } catch (e) { $('msg').textContent = 'Lost the connection. Check the printer, then reload this page.'; }
+  refresh();
+};
+refresh();
+</script></body></html>)HTML";
+
+static void handleHome() { server.send_P(200, "text/html", HOME_PAGE); }
 
 // ── Setup / loop ─────────────────────────────────────────────────────────────
 
@@ -373,31 +431,26 @@ void setup() {
   Serial.println(sdOk ? "SD card ok" : "SD card NOT found — check wiring and that it's FAT32");
 
   prefs.begin("workbook", false);
-  lastPrinted = prefs.getString("lastPrinted", "");
+  lastPrinted = prefs.getInt("lastNum", 0);
+  removeDatedFiles();
 
   connectWifi();
   configTzTime(TZ_INFO, "pool.ntp.org", "time.nist.gov");
   MDNS.begin(DEVICE_HOSTNAME);
   MDNS.addService("http", "tcp", 80);
 
-  server.on("/", HTTP_GET, handleStatus);
+  server.on("/", HTTP_GET, handleHome);
   server.on("/status", HTTP_GET, handleStatus);
   server.on(UriBraces("/files/{}"), HTTP_PUT, handleUploadDone, handleUploadData);
   server.on(UriBraces("/files/{}"), HTTP_DELETE, handleDelete);
+  server.on("/print/next", HTTP_POST, handlePrintNext);
   server.on(UriBraces("/print/{}/{}"), HTTP_POST, handlePrint);
   server.onNotFound([] { sendJson(404, "{\"error\":\"not found\"}"); });
   server.begin();
-  logf("ready at http://%s.local  (prints at %02d:%02d)", DEVICE_HOSTNAME, PRINT_HOUR, PRINT_MINUTE);
+  logf("ready at http://%s.local  (prints the next workbook when asked)", DEVICE_HOSTNAME);
 }
 
 void loop() {
   server.handleClient();
-  static uint32_t lastCheck = 0;
-  if (millis() - lastCheck > 20000) {
-    lastCheck = millis();
-    checkSchedule();
-    static bool cleaned = false;
-    if (!cleaned && clockSet()) { cleanupOld(); cleaned = true; }
-  }
   delay(2);
 }

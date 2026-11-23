@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Build several days of workbooks ahead of time and turn each into a file the
-HP ENVY Inspire 7900 can print directly (PCLm), ready for the ESP32 to send
-on the morning it's for.
+Build the next few workbooks ahead of time and turn each into a file the
+HP ENVY Inspire 7900 can print directly (PCLm), ready for the ESP32 to print
+one at a time, whenever you ask for the next one.
 
-The HP doesn't accept PDF over IPP, so each PDF is converted with Ghostscript
-(brew install ghostscript). Days are generated in order, one at a time,
-because each day's HSK / LeetCode / reading / Italian progress builds on the
-day before.
+Workbooks are numbered, not dated: workbook 4 follows workbook 3 whether
+that's tomorrow or next month. The HP doesn't accept PDF over IPP, so each PDF
+is converted with Ghostscript (brew install ghostscript). Workbooks are
+generated in order, one at a time, because each one's HSK / LeetCode /
+reading / Italian progress builds on the one before.
 
 Run it with the venv Python so MLX is available:
-    ../.venv/bin/python print_batch.py                  # the next 7 days, starting tomorrow
-    ../.venv/bin/python print_batch.py --start 2026-11-10 --days 3
-    ../.venv/bin/python print_batch.py --convert-only   # just (re)convert existing PDFs
+    ../.venv/bin/python print_batch.py                  # the next 7 workbooks
+    ../.venv/bin/python print_batch.py --count 3        # the next 3
+    ../.venv/bin/python print_batch.py --rebuild 5      # redo workbook 5 (same content)
+    ../.venv/bin/python print_batch.py --convert-only   # just (re)convert the queued PDFs
 
-Output: workbooks/print_queue/YYYY-MM-DD.pclm plus manifest.json listing them.
-A day whose PDF already exists is not regenerated (that would advance the
-progress files twice) unless you pass --force.
+Output: workbooks/print_queue/NNN.pclm plus manifest.json listing them.
 """
 
 import argparse
@@ -25,8 +25,10 @@ import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta
+from datetime import datetime
 from pathlib import Path
+
+import progression
 
 HERE = Path(__file__).resolve().parent
 GENERATOR = HERE / "workbooks" / "dailyWorkbookLocal.py"
@@ -35,17 +37,21 @@ QUEUE_DIR = WORKBOOK_DIR / "print_queue"
 
 # What the HP reports it accepts (ipptool get-printer-attributes):
 #   pclm-source-resolution-supported = 300dpi,600dpi; pclm-strip-height-preferred = 32
-# 300dpi keeps a ~54-page day around 13 MB; 600dpi is roughly 4x that.
+# 300dpi keeps a ~54-page workbook around 13 MB; 600dpi is roughly 4x that.
 RESOLUTION = 300
 STRIP_HEIGHT = 32
 
 
-def pdf_for(day: date) -> Path:
-    return WORKBOOK_DIR / f"daily-workbook-{day.isoformat()}.pdf"
+def pdf_for(n: int) -> Path:
+    return WORKBOOK_DIR / f"workbook-{progression.label(n)}.pdf"
 
 
-def pclm_for(day: date) -> Path:
-    return QUEUE_DIR / f"{day.isoformat()}.pclm"
+def pclm_for(n: int) -> Path:
+    return QUEUE_DIR / f"{progression.label(n)}.pclm"
+
+
+def queued_numbers() -> list[int]:
+    return sorted(int(f.stem) for f in QUEUE_DIR.glob("*.pclm") if f.stem.isdigit())
 
 
 def find_gs() -> str:
@@ -67,15 +73,15 @@ def page_count(pdf: Path, gs: str) -> int | None:
         return None
 
 
-def generate(day: date) -> bool:
-    print(f"\n━━ Generating {day:%a %Y-%m-%d} ━━", flush=True)
-    r = subprocess.run([sys.executable, str(GENERATOR), "--date", day.isoformat(), "--no-open"],
-                       cwd=GENERATOR.parent)
-    return r.returncode == 0 and pdf_for(day).exists()
+def generate(n: int, rebuild: bool = False) -> bool:
+    print(f"\n━━ Generating workbook {n} ━━", flush=True)
+    cmd = [sys.executable, str(GENERATOR), "--no-open"] + (["--number", str(n)] if rebuild else [])
+    r = subprocess.run(cmd, cwd=GENERATOR.parent)
+    return r.returncode == 0 and pdf_for(n).exists()
 
 
-def convert(day: date, gs: str) -> Path:
-    src, dst = pdf_for(day), pclm_for(day)
+def convert(n: int, gs: str) -> Path:
+    src, dst = pdf_for(n), pclm_for(n)
     tmp = dst.with_suffix(".pclm.part")
     subprocess.run(
         [gs, "-q", "-dBATCH", "-dNOPAUSE", "-dSAFER",
@@ -88,75 +94,70 @@ def convert(day: date, gs: str) -> Path:
 
 
 def write_manifest(gs: str) -> None:
-    today = date.today()
-    days = []
-    for f in sorted(QUEUE_DIR.glob("*.pclm")):
-        d = datetime.strptime(f.stem, "%Y-%m-%d").date()
-        if d < today:
-            f.unlink()  # already printed (or missed); the PDF is still in workbooks/
-            continue
-        days.append({"date": f.stem, "file": f.name, "bytes": f.stat().st_size,
-                     "pages": page_count(pdf_for(d), gs) if pdf_for(d).exists() else None})
+    books = []
+    for n in queued_numbers():
+        f = pclm_for(n)
+        books.append({"number": n, "file": f.name, "bytes": f.stat().st_size,
+                      "pages": page_count(pdf_for(n), gs) if pdf_for(n).exists() else None})
     manifest = {"generated": datetime.now().isoformat(timespec="seconds"),
                 "format": "application/PCLm", "media": "na_letter_8.5x11in",
-                "days": days}
+                "workbooks": books}
     (QUEUE_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--start", help="first day, YYYY-MM-DD (default: tomorrow)")
-    ap.add_argument("--days", type=int, default=7, help="how many days to build (default 7)")
-    ap.add_argument("--force", action="store_true",
-                    help="regenerate days whose PDF already exists (advances progress again)")
+    ap.add_argument("--count", type=int, default=7, help="how many new workbooks to build (default 7)")
+    ap.add_argument("--rebuild", type=int, metavar="N",
+                    help="rebuild workbook N with the same content instead of building new ones")
     ap.add_argument("--convert-only", action="store_true",
-                    help="skip generation; convert whatever PDFs already exist")
+                    help="skip generation; (re)convert the PDFs of the workbooks in the queue")
     args = ap.parse_args()
 
-    start = (datetime.strptime(args.start, "%Y-%m-%d").date() if args.start
-             else date.today() + timedelta(days=1))
-    days = [start + timedelta(days=i) for i in range(args.days)]
     gs = find_gs()
     QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
-    failed: list[date] = []
-    # Generation is sequential (progress files chain day to day); conversion is
-    # slow (~2–3 min a day) but independent, so it runs alongside.
+    if args.convert_only:
+        todo = [(n, None) for n in queued_numbers()]
+    elif args.rebuild:
+        todo = [(args.rebuild, True)]
+    else:
+        first = progression.next_number()
+        todo = [(n, False) for n in range(first, first + args.count)]
+
+    failed: list[int] = []
+    # Generation is sequential (progress files chain from one workbook to the
+    # next); conversion is slow (~2–3 min each) but independent, so it runs alongside.
     with ThreadPoolExecutor(max_workers=3) as pool:
         jobs = {}
-        for d in days:
-            have_pdf = pdf_for(d).exists()
-            if not args.convert_only and (args.force or not have_pdf):
-                if not generate(d):
-                    print(f"✗ {d}: generation failed — stopping here so later days "
-                          f"don't build on a missing day")
-                    failed.append(d)
-                    break
-            elif not have_pdf:
-                print(f"· {d}: no PDF, skipping")
+        for n, rebuild in todo:
+            if rebuild is not None and not generate(n, rebuild):
+                print(f"✗ workbook {n}: generation failed — stopping here so later "
+                      f"workbooks don't build on a missing one")
+                failed.append(n)
+                break
+            if not pdf_for(n).exists():
+                print(f"· workbook {n}: no PDF, skipping")
                 continue
-            else:
-                print(f"· {d}: PDF already exists, not regenerating")
-
-            out = pclm_for(d)
-            if out.exists() and out.stat().st_mtime >= pdf_for(d).stat().st_mtime:
-                print(f"· {d}: print file up to date")
+            out = pclm_for(n)
+            if out.exists() and out.stat().st_mtime >= pdf_for(n).stat().st_mtime:
+                print(f"· workbook {n}: print file up to date")
                 continue
-            print(f"⏳ {d}: converting to PCLm in the background", flush=True)
-            jobs[d] = pool.submit(convert, d, gs)
+            print(f"⏳ workbook {n}: converting to PCLm in the background", flush=True)
+            jobs[n] = pool.submit(convert, n, gs)
 
-        for d, job in jobs.items():
+        for n, job in jobs.items():
             try:
                 f = job.result()
-                print(f"✓ {d}: {f.name} ({f.stat().st_size / 1e6:.1f} MB)")
+                print(f"✓ workbook {n}: {f.name} ({f.stat().st_size / 1e6:.1f} MB)")
             except subprocess.CalledProcessError as e:
-                print(f"✗ {d}: conversion failed\n{e.stderr.decode(errors='replace')[-800:]}")
-                failed.append(d)
+                print(f"✗ workbook {n}: conversion failed\n{e.stderr.decode(errors='replace')[-800:]}")
+                failed.append(n)
 
     write_manifest(gs)
     print(f"\nPrint queue: {QUEUE_DIR}")
     if failed:
-        print("Failed: " + ", ".join(str(d) for d in failed))
+        print("Failed: " + ", ".join(f"workbook {n}" for n in failed))
         return 1
     return 0
 

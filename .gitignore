@@ -20,3 +20,6 @@ daily-workbook/hanzi_data/
 # Print files built ahead for the ESP32 (print_batch.py)
 daily-workbook/workbooks/print_queue/
 daily-workbook/workbooks/*.log
+
+# Dated workbooks, print files and progress from before workbooks were numbered
+daily-workbook/workbooks/archive-dated/

@@ -18,7 +18,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from datetime import date, timedelta
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -137,29 +136,29 @@ class Progress(unittest.TestCase):
 
     def test_sequence(self):
         total = len(italian.plan_days())
-        d0 = date(2026, 11, 9)
-        self.assertEqual(italian.daily_set(d0, mark=False)["day"], 1)
+        w0 = 5   # the Italian day doesn't have to match the workbook number
+        self.assertEqual(italian.daily_set(w0, mark=False)["day"], 1)
         self.assertFalse(italian.PROGRESS_FILE.exists())               # mark=False saves nothing
-        self.assertEqual(italian.daily_set(d0)["day"], 1)
-        self.assertEqual(italian.daily_set(d0)["day"], 1)              # stable on rerun
-        self.assertEqual(italian.daily_set(d0 + timedelta(days=1), mark=False)["day"], 2)
+        self.assertEqual(italian.daily_set(w0)["day"], 1)
+        self.assertEqual(italian.daily_set(w0)["day"], 1)              # stable on rebuild
+        self.assertEqual(italian.daily_set(w0 + 1, mark=False)["day"], 2)
         for i in range(1, total):
-            self.assertEqual(italian.daily_set(d0 + timedelta(days=i))["day"], i + 1)
-        self.assertEqual(italian.daily_set(d0)["day"], 1)              # old dates keep their day
-        done = italian.daily_set(d0 + timedelta(days=total))
+            self.assertEqual(italian.daily_set(w0 + i)["day"], i + 1)
+        self.assertEqual(italian.daily_set(w0)["day"], 1)              # old workbooks keep their day
+        done = italian.daily_set(w0 + total)
         self.assertTrue(done["done"])
         r = italian.render(done)
         self.assertEqual(len(r["lesson_pages"]), 1)
         self.assertEqual(r["answer_pages"], [])
         saved = json.loads(italian.PROGRESS_FILE.read_text())
-        self.assertEqual(sorted(saved["by_date"].values()), list(range(1, total + 1)))
+        self.assertEqual(sorted(saved["by_workbook"].values()), list(range(1, total + 1)))
 
 
 class Rendering(unittest.TestCase):
     def test_every_day(self):
         course = italian.load_course()
         for p in italian.plan_days(course):
-            ds = italian.day_set_for(p["day"], date(2026, 11, 12), course)
+            ds = italian.day_set_for(p["day"], course)
             r = italian.render(ds)
             self.assertIn("<style>", r["css"])
             self.assertTrue(r["lesson_pages"] and r["answer_pages"])
@@ -187,11 +186,12 @@ class Rendering(unittest.TestCase):
                     if e["type"] == "open":
                         self.assertNotIn(plain(html.escape(e["example"]))[:40], plain(lessons))
 
-    def test_weekday_answer_follows_print_date(self):
+    def test_weekday_answer_has_no_date(self):
         course = italian.load_course()
         n = next(p["day"] for p in italian.plan_days(course) if "2.6" in p["section_ids"])
-        r = italian.render(italian.day_set_for(n, date(2026, 11, 12), course))   # a Thursday
-        self.assertIn("giovedì, venerdì, sabato", plain("".join(r["answer_pages"])))
+        r = italian.render(italian.day_set_for(n, course))
+        self.assertIn("Depends on the day you do it", plain("".join(r["answer_pages"])))
+        self.assertIn("lunedì, martedì, mercoledì", plain("".join(r["answer_pages"])))
 
     def test_pdf(self):
         out = OPTIONS["pdf_dir"]
@@ -202,8 +202,8 @@ class Rendering(unittest.TestCase):
         out = Path(out)
         out.mkdir(parents=True, exist_ok=True)
         pages = []
-        for n, d in [(1, date(2026, 11, 9)), (3, date(2026, 11, 11))]:
-            r = italian.render(italian.day_set_for(n, d))
+        for n in (1, 3):
+            r = italian.render(italian.day_set_for(n))
             pages += r["lesson_pages"] + r["answer_pages"]
         src = out / "italian-sample.html"
         pdf = out / "italian-sample.pdf"

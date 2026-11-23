@@ -8,7 +8,9 @@ use taskprinter.py to print them:
   python vibeCode/taskprinter.py print-window \\
       --file workbook_tasks.json --printer <your-printer> --days 1
 
-CS311 topics come from cs311.py, the same source the workbook uses.
+CS311 topics come from cs311.py, the same source the workbook uses. Workbooks
+are numbered, not dated, so each receipt is for the next workbook in line:
+today's receipt is the next workbook to be built, tomorrow's the one after.
 """
 from __future__ import annotations
 
@@ -19,9 +21,7 @@ import unicodedata
 from datetime import date, timedelta
 
 import cs311  # daily-workbook/cs311.py
-
-
-CERT_START = date(2026, 5, 12)
+import progression
 
 
 HSK1_VOCAB = [
@@ -141,64 +141,44 @@ def load_hsk_progress() -> dict:
         return {"version": 1, "days": [], "introduced_chars": []}
 
 
-def practice_char_for_day(target_date: date, progress: dict) -> str | None:
-    """Return the practice char label (ascii-safe) for a given date."""
-    date_str = target_date.isoformat()
-
-    # Check if this date already has a recorded entry
-    for day in progress.get("days", []):
-        if day.get("date") == date_str:
+def practice_char_for_workbook(n: int, progress: dict) -> str | None:
+    """Return the practice char label (ascii-safe) for workbook n."""
+    days = progress.get("days", [])
+    for day in days:
+        if day.get("day_num") == n:
             char = day.get("char_practice_char")
             if char and char in HSK_WORD_INDEX:
                 w = HSK_WORD_INDEX[char]
                 return f"{w['pinyin']} - {w['meaning']}"
             return None
 
-    # Simulate forward from introduced_chars
+    # Not built yet: simulate forward from the words introduced so far
     introduced = set(progress.get("introduced_chars", []))
     vocab_queue = [w for w in HSK1_VOCAB if w["char"] not in introduced]
-
-    # Number of days since the last recorded day in progress
-    recorded_dates = sorted(d["date"] for d in progress.get("days", []))
-    if recorded_dates:
-        last_date = date.fromisoformat(recorded_dates[-1])
-    else:
-        last_date = CERT_START - timedelta(days=1)
-
-    sim_date = last_date + timedelta(days=1)
-    while sim_date <= target_date:
-        if not vocab_queue:
-            return None
-        lesson = vocab_queue[:LESSONS_PER_DAY]
-        practice = lesson[0]
-        vocab_queue = vocab_queue[LESSONS_PER_DAY:]
-        if sim_date == target_date:
-            return f"{practice['pinyin']} - {practice['meaning']}"
-        sim_date += timedelta(days=1)
-
-    return None
+    last = max((d.get("day_num", 0) for d in days), default=0)
+    skip = (n - last - 1) * LESSONS_PER_DAY
+    if n <= last or skip >= len(vocab_queue):
+        return None
+    practice = vocab_queue[skip]
+    return f"{practice['pinyin']} - {practice['meaning']}"
 
 
 # ── Item generation ───────────────────────────────────────────────────────────
 
-def cert_day_for(d: date) -> int:
-    return max(1, (d - CERT_START).days + 1)
-
-
-def items_for_date(d: date, hsk_progress: dict) -> list[dict]:
-    cday = cert_day_for(d)
+def items_for_workbook(n: int, d: date, hsk_progress: dict) -> list[dict]:
+    """Receipt items for workbook n, due on day d."""
     date_str = d.isoformat()
 
-    algo = cs311.daily_set(d)
+    algo = cs311.daily_set(n)
 
-    hsk_label = practice_char_for_day(d, hsk_progress)
+    hsk_label = practice_char_for_workbook(n, hsk_progress)
 
     items = [] if not algo["course_order"] else [
         {
-            "id": f"cs311-{date_str}",
+            "id": f"cs311-wb{n}",
             "type": "assignment",
             "course": "CS311",
-            "title": (", ".join(f"{q['topic']} Q{q['question_number']}" for q in algo["course_order"])
+            "title": (f"Workbook {n}: " + ", ".join(f"{q['topic']} Q{q['question_number']}" for q in algo["course_order"])
                       + f" + random: {algo['random']['topic']} Q{algo['random']['question_number']}"
                       + (f" + {len(algo['review'])} review" if algo.get("review") else "")),
             "due": date_str,
@@ -208,7 +188,7 @@ def items_for_date(d: date, hsk_progress: dict) -> list[dict]:
 
     if hsk_label:
         items.append({
-            "id": f"hsk-{date_str}",
+            "id": f"hsk-wb{n}",
             "type": "assignment",
             "course": "HSK 1",
             "title": f"Practice: {hsk_label}",
@@ -264,7 +244,7 @@ def main() -> int:
     all_items: list[dict] = []
     for offset in range(args.days):
         d = today + timedelta(days=offset)
-        all_items.extend(items_for_date(d, progress))
+        all_items.extend(items_for_workbook(progression.next_number() + offset, d, progress))
 
     if args.preview:
         for it in all_items:
