@@ -172,6 +172,27 @@ def fear_rows(state, first="FEAR"):
     ]
 
 
+def day_rows(day):
+    """Compact rows for the day page: one status line, plus any rep still to do."""
+    state = load()
+    cells = [label("PRACTICE")]
+    todo = []
+    for name in ORDER:
+        ladder = state[name]
+        if ladder["plan"]:
+            mark = ("yellow", "planned")
+            todo.append((name, ladder["plan"].get("do", "")))
+        elif done_this_cycle(ladder, day):
+            mark = ("green", "done")
+        else:
+            mark = ("grey", "-")
+        cells += [("plain", "{} r{} ".format(name, ladder["rung"])), mark, ("plain", "   ")]
+    out = [cells]
+    for name, text in todo:
+        out.append([label(""), ("yellow", "rep to do: "), ("plain", "{} - {}".format(name, text)[:50])])
+    return out
+
+
 def dash_rows(day):
     """Rows for the dashboard: rungs, a dot per rep, and fear against reality."""
     state = load()

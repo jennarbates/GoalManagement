@@ -17,7 +17,7 @@ except ImportError:
     winsound = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "2026-11-23f"      # change this whenever the scripts change
+VERSION = "2026-11-23g"      # change this whenever the scripts change
 SECTIONS = ["DOING", "THIS CYCLE", "BACKLOG - IMPORTANT", "BACKLOG - SOMEDAY", "DONE"]
 HEADERS = {"DOING": "DOING (max 1)", "THIS CYCLE": "THIS CYCLE"}
 CYCLE_DAYS = 7
@@ -146,9 +146,9 @@ COMMANDS = """
 All commands (type them in the Cygwin terminal):
   focus              the guided day: plan, pomodoros, breaks, log, dashboard
   focus today        one page for today: the MUST, what is done, what is left
-  focus dash         the big-picture dashboard
+  focus dash         the dashboard on one screen (focus dash all = everything)
   focus check        daily routines (shower, meals ...): tick them off
-  focus practice     the uncertainty / failure / conflict ladders: plan and log reps
+  focus practice     uncertainty / failure / conflict ladders: plan, log reps
   focus appt         today's fixed things (work, the vet): see and add
   focus reward       your reward menu: see it, add to it, roll one
   focus report       which questions you answer and which you skip

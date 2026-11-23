@@ -88,14 +88,15 @@ HELPERS BUILT IN
   Pick for me   When choosing the MUST is too much, type p. It takes the
                 top item.
 
-THE DASHBOARD (python dash.py, or shown by day.py)
-  TODAY       (O) done, ( ) still promised
-  POMODOROS   the wall: one o per pomodoro ever, 20 per row,
-              green = focused, yellow = okay, red = scattered
-  MILESTONES  stars at 1, 5, 10, 25, 50, 75, 100 ... and a bar to the next
-  ACTIVITY    cycles across, days down; brighter green = more pomodoros
-  VELOCITY    points finished per cycle      GOALS  points per #goal
-  Make the Cygwin window taller to see it all at once.
+THE DASHBOARDS
+  focus today     today only: fixed things, the MUST, your promise,
+                  routines, practice, what is done and what is left
+  focus dash      the big picture on ONE screen, one line per area
+  focus dash all  everything in full: the pomodoro wall, milestones,
+                  the activity grid, routines, practice, velocity, goals
+  focus summary   one cycle looked back on
+  day.py shows the one-screen dashboard at the start, and the day page
+  followed by the one-screen dashboard at the end.
 
 THE TIMER
   No numbers. Hourglass: sand runs from top to bottom.

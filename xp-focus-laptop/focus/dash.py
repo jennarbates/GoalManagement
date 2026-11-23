@@ -1,5 +1,8 @@
 # Progress dashboard: reads log.txt and backlog.txt and draws them.
 # Run by itself:  python dash.py     (day.py shows it at the start and end)
+import re
+import sys
+
 import focuslib as fl
 import practice
 import routines
@@ -200,7 +203,7 @@ def summary_main():
     show_summary(fl.Screen(fl.load_settings()["display"]), int(numbers[0]) if numbers else None)
 
 
-def show(screen, today=None):
+def show_full(screen, today=None):
     days = fl.read_log()
     backlog = fl.load_backlog()
     if today is None:
@@ -296,7 +299,15 @@ def show(screen, today=None):
 HELP = """
 dash.py - the progress dashboard
 
-  python dash.py
+  focus dash           one screen: one line per area
+  focus dash all       everything, in full (about two screens)
+
+The short dashboard:
+  TODAY, THIS CYCLE, DEADLINE (the nearest), PROMISES, POMODOROS (total
+  and the bar to your next star), 14 DAYS (one block per day),
+  ROUTINES (streaks), PRACTICE (rungs, fears against reality), PARKED.
+
+The full dashboard adds:
 
   TODAY       (O) done, ( ) still promised
   THIS CYCLE  points finished out of points planned
@@ -314,11 +325,115 @@ dash.py - the progress dashboard
   GOALS       points per goal, for tasks tagged like #hsk or #cs311
 """
 
+def nearest_deadline(backlog, today):
+    """(days left, text, how many more) for the closest open deadline, or None."""
+    due = []
+    for section in fl.SECTIONS[:-1]:
+        for line in backlog[section]:
+            item = fl.parse_item(line)
+            if item["due"] is not None:
+                due.append((item["due"] - today, item["text"]))
+    if not due:
+        return None
+    due.sort()
+    return due[0][0], due[0][1], len(due) - 1
+
+
+def show(screen, today=None):
+    """The one-screen dashboard: one line per area. The long one is show_full."""
+    days = fl.read_log()
+    backlog = fl.load_backlog()
+    if today is None:
+        today = max(days) if days else 1
+    cycle, position = fl.cycle_of(today)
+    focus = all_focus(days)
+
+    screen.line("")
+    screen.line("  FOCUS  -  day D{}  -  cycle {}, day {} of {}".format(
+        today, cycle, position, fl.CYCLE_DAYS), "bold")
+    screen.line("")
+
+    info = days.get(today)
+    if info is not None and info["planned"]:
+        screen.row([label("TODAY")] + today_row(len(info["focus"]), info["planned"]))
+
+    by_cycle = fl.done_points_by_cycle(backlog)
+    done = by_cycle.get(cycle, 0)
+    planned = done + fl.points_of(backlog["DOING"]) + fl.points_of(backlog["THIS CYCLE"])
+    screen.row([label("THIS CYCLE")] + bar(done, planned) +
+               [("plain", "  {} of {} points".format(done, planned))])
+
+    nearest = nearest_deadline(backlog, today)
+    if nearest:
+        left, text, more = nearest
+        when = ("OVERDUE by {}".format(-left) if left < 0 else "due today" if left == 0
+                else "due in {} day{}".format(left, "" if left == 1 else "s"))
+        text = re.sub(r"\s*(\(B[1-4]\)|@D\d+)", "", text)
+        screen.row([label("DEADLINE"), ("red" if left <= 2 else "yellow", "{:<15}".format(when)),
+                    ("plain", text[:36]), ("grey", "  +{} more".format(more) if more else "")])
+
+    started = [d for d in days.values() if d["planned"] is not None]
+    kept = len([d for d in started if d["did"] == d["planned"]])
+    screen.row([label("PROMISES")] + bar(kept, len(started), 14) +
+               [("plain", "  kept {} of {} days".format(kept, len(started)))])
+
+    upcoming = [m for m in MILESTONES if m > len(focus)]
+    cells = [label("POMODOROS"), ("red", "o "), ("plain", "{:<5}".format(len(focus)))]
+    if upcoming:
+        cells += [("plain", "next star at {:<5}".format(upcoming[0]))] + bar(len(focus), upcoming[0], 20)
+    screen.row(cells)
+
+    cells = [label("14 DAYS")]
+    for day in range(max(1, today - 13), today + 1):
+        cells += [heat_cell(days.get(day)), ("plain", " ")]
+    screen.row(cells)
+
+    items = fl.load_routines()
+    if items:
+        ticks = fl.read_ticks()
+        cells, used = [label("ROUTINES")], 0
+        for name, times in items:
+            current, best = routines.streaks(name, times, ticks, today)
+            text = "{} ".format(name[:14])
+            if used + len(text) + 6 > 62:
+                cells.append(("grey", "..."))
+                break
+            cells += [("plain", text), ("yellow", "{}".format(current)), ("plain", "   ")]
+            used += len(text) + len(str(current)) + 3
+        cells.append(("grey", "(streaks)"))
+        screen.row(cells)
+
+    if fl.on(fl.load_settings(), "ask_practice"):
+        state = practice.load()
+        cells = [label("PRACTICE")]
+        for name in practice.ORDER:
+            cells += [("plain", "{} ".format(name)), ("green", "r{}".format(state[name]["rung"])),
+                      ("plain", "   ")]
+        total, happened, _ = practice.fear_counts(state)
+        if total:
+            cells.append(("yellow", "feared {}, happened {}".format(total, happened)))
+        screen.row(cells)
+
+    parked = len(fl.read_park())
+    if parked:
+        screen.row([label("PARKED"), ("yellow", "{} thought{} waiting".format(
+            parked, "" if parked == 1 else "s"))])
+
+    screen.line("")
+    screen.line("  More:  focus dash all    focus today    focus summary    focus practice", "grey")
+    screen.line("")
+    screen.flush()
+
+
 def main():
     if fl.help_requested(HELP):
         return
     fl.fix_streams()
-    show(fl.Screen(fl.load_settings()["display"]))
+    screen = fl.Screen(fl.load_settings()["display"])
+    if "all" in [arg.lower() for arg in sys.argv[1:]]:
+        show_full(screen)
+    else:
+        show(screen)
 
 
 if __name__ == "__main__":

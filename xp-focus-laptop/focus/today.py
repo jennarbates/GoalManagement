@@ -20,8 +20,8 @@ today.py - one page for one day
   PROMISE      (O) pomodoro done, ( ) still promised
   ROUTINES     today's boxes for shower, meals and so on (focus check)
   PRACTICE     each ladder's rung and this cycle's rep (focus practice)
-  DONE SO FAR  each pomodoro and break, in order, with what you said
-               you would do and how it went
+  DONE SO FAR  the six most recent pomodoros and breaks, with what you
+               said you would do and how it went
   NEXT         the note you left yourself for the next pomodoro
   STILL TO DO  what is left of today's promise
   DUE SOON     other tasks due within 2 focus days
@@ -29,6 +29,7 @@ today.py - one page for one day
 Nothing else from the backlog is shown, on purpose.
 """
 
+KEEP = 6          # most recent pomodoros and breaks listed under DONE SO FAR
 FOCUS = {"3": ("on_green", "focused"), "2": ("on_yellow", "okay"), "1": ("on_red", "scattered")}
 ENERGY = {"1": "low", "2": "normal", "3": "high"}
 
@@ -75,7 +76,7 @@ def show(screen, day=None):
     for row in routines.rows(day):
         screen.row(row)
     if fl.on(fl.load_settings(), "ask_practice"):
-        for row in practice.rows(day):
+        for row in practice.day_rows(day):
             screen.row(row)
 
     screen.line("")
@@ -83,12 +84,18 @@ def show(screen, day=None):
     next_note, shown = "", 0
     for kind, fields in events:
         if kind.startswith("pomo"):
+            next_note = fields.get("next", next_note)
+    listed = [event for event in events
+              if event[0].startswith(("pomo", "break")) or event[0] == "abandoned"]
+    if len(listed) > KEEP:
+        screen.line("    ... {} earlier".format(len(listed) - KEEP), "grey")
+    for kind, fields in listed[-KEEP:]:
+        if kind.startswith("pomo"):
             color, word = FOCUS.get(fields.get("focus"), ("grey", ""))
             screen.row([("plain", "    {:<3}".format(kind.split()[-1])), (color, "##"),
                         ("plain", "  {:<46}".format(fields.get("intent", "")[:46])), ("grey", word)])
             if fields.get("note"):
                 screen.row([("grey", "           note: {}".format(fields["note"])[:76])])
-            next_note = fields.get("next", next_note)
             shown += 1
         elif kind.startswith("break"):
             away = fields.get("away") == "y"
@@ -109,8 +116,12 @@ def show(screen, day=None):
         if next_note:
             screen.row([dash.label("NEXT"), ("green", next_note[:60])])
         left = max(0, planned - done)
-        screen.row([dash.label("STILL TO DO"), ("yellow", "{} pomodoro{}".format(
-            left, "" if left == 1 else "s")), ("plain", "  (next is {} of {})".format(done + 1, planned))])
+        if left:
+            screen.row([dash.label("STILL TO DO"), ("yellow", "{} pomodoro{}".format(
+                left, "" if left == 1 else "s")),
+                ("plain", "  (next is {} of {})".format(done + 1, planned))])
+        else:
+            screen.row([dash.label("STILL TO DO"), ("green", "no pomodoros - type  focus  to close the day")])
 
     soon = []
     for section in fl.SECTIONS[:-1]:
@@ -118,7 +129,7 @@ def show(screen, day=None):
             item = fl.parse_item(line)
             if item["due"] is not None and item["due"] - day <= 2 and line != must:
                 soon.append((item["due"] - day, matrix.strip_box(item["text"])))
-    for i, (left, text) in enumerate(sorted(soon)[:4]):
+    for i, (left, text) in enumerate(sorted(soon)[:2]):
         when = "OVERDUE" if left < 0 else "today" if left == 0 else "in {} day{}".format(
             left, "" if left == 1 else "s")
         screen.row([dash.label("DUE SOON" if i == 0 else ""), ("red", "{:<10}".format(when)),
@@ -128,7 +139,7 @@ def show(screen, day=None):
     if parked:
         screen.row([dash.label("PARKED"), ("yellow", "{} thought{}".format(
             len(parked), "" if len(parked) == 1 else "s")), ("grey", "  (sorted at the end of the day)")])
-        for text in parked[:4]:
+        for text in parked[:2]:
             screen.line("              - {}".format(text[:60]), "grey")
 
     screen.line("")
