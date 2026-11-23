@@ -1,5 +1,7 @@
 {
   "by_workbook": {
-    "1": "contains-duplicate"
+    "1": "contains-duplicate",
+    "2": "valid-anagram",
+    "3": "two-sum"
   }
 }
