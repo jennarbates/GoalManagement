@@ -73,7 +73,7 @@ def show(screen, day=None):
     if start.get("energy") in ENERGY:
         screen.row([dash.label("ENERGY"), ("plain", ENERGY[start["energy"]])])
 
-    for row in routines.rows(day):
+    for row in routines.rows(day) + routines.weekly_rows(day):
         screen.row(row)
     if fl.on(fl.load_settings(), "ask_practice"):
         for row in practice.day_rows(day):

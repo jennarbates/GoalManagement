@@ -1,4 +1,5 @@
-# Daily routines, one per line. Add x3 for three times a day.
+# Routines, one per line. Add x3 for three times a day.
+# End a line with the word weekly for once a cycle:  laundry weekly
 # Tick them with:  focus check
 shower
 eat a meal x3

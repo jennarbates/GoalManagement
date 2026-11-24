@@ -48,6 +48,10 @@ Asks for the task and four questions, then prints a line such as
   [3] write linked list in C
 Sizes are 1, 2, 3, 5 or 8. The anchor is "re-solve one LeetCode
 problem" = 2 points. 8 means too big: split it first.
+
+Points are not priority. The Eisenhower chart (urgent? important?)
+decides WHEN a task gets done. Points only say HOW BIG it is, so that
+cycle planning can tell how much fits.
 Nothing is saved; day.py does this for you when you add a task.
 """
 

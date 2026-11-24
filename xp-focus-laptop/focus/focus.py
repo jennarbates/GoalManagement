@@ -16,6 +16,7 @@ import matrix
 import points
 import pomo
 import quick
+import reflect
 import practice
 import report
 import rewards
@@ -35,6 +36,7 @@ COMMANDS = {
     "appt": appts.main, "reward": rewards.main, "report": report.main,
     "diagnose": diagnose.main, "feedback": diagnose.feedback_main,
     "practice": practice.main, "done": quick.done_main, "extra": quick.extra_main,
+    "end": day.end_main, "reflect": reflect.main,
 }
 
 

@@ -75,11 +75,15 @@ def ask_category(screen, backlog):
 
 def capture(screen, backlog, text):
     """Sort one new task with the Eisenhower questions, size it, file it."""
+    screen.line("  First, WHEN to do it - two questions put it in a box on the chart:", "grey")
     urgent = fl.ask_yes(screen, "  Is it urgent (a real deadline soon)?", False)
     important = fl.ask_yes(screen, "  Is it important (moves a goal you care about)?", True)
     if not urgent and not important:
         screen.line("  Box 4: not urgent, not important. Dropped - not added.", "grey")
         return
+    screen.line("")
+    screen.line("  Now, HOW BIG it is - points. They do not change its priority;", "grey")
+    screen.line("  they only show how much fits in a cycle.", "grey")
     size = points.estimate(screen)
     if size == 8:
         screen.line("  8 points is too big to finish. Add it, but split it before starting.", "yellow")
@@ -172,12 +176,14 @@ def review_cycle(screen, backlog, day, cycle):
     dash.banner(screen, "CYCLE {} COMPLETE - {} POINTS".format(cycle, total))
     dash.show_summary(screen, cycle)
     report.show(screen, cycle)
+    worked = fl.ask(screen, "What worked well this cycle?")
     blocked = fl.ask(screen, "What got in the way?")
     change = fl.ask(screen, "One thing to change next cycle?")
     about = fl.ask(screen, "Anything about this system itself to fix or change? (saved for Claude):")
     if about:
         fl.feedback(about)
     fl.log(day, "review", "CYCLE {} DONE - {} points".format(cycle, total),
+           "worked: " + worked if worked else "",
            "blocked: " + blocked if blocked else "", "change: " + change if change else "")
     if fl.ask_yes(screen, "Back up C:\\focus to the USB stick now?"):
         backup.run(screen)
@@ -194,8 +200,14 @@ def pick_day(screen, days):
         return 1, False
     last = max(days)
     if days[last]["did"] is None:
-        if fl.ask_yes(screen, "D{} was started but not closed. Continue it?".format(last)):
+        if fl.pomo_count(last) >= (days[last]["planned"] or 0):
+            screen.line("D{}: every promised pomodoro is done, but the day was never closed.".format(last))
+            if fl.ask_yes(screen, "Close D{} now?".format(last)):
+                return last, True
+        elif fl.ask_yes(screen, "D{} was started but not closed. Continue it?".format(last)):
             return last, True
+        if not fl.ask_yes(screen, "Leave D{} unfinished and start D{}?".format(last, last + 1), False):
+            return None, False
         return last + 1, False
     screen.line("D{} is finished.".format(last), "green")
     if fl.ask_yes(screen, "Is this a new day? Start D{}?".format(last + 1), False):
@@ -347,11 +359,101 @@ def run_pomodoros(screen, settings, day, planned, first, must, workbook):
         n += 1
 
 
+def close_day(screen, settings, day, planned, did, must, started=None):
+    """Everything that happens when a day ends, kept promise or not."""
+    cycle, position = fl.cycle_of(day)
+    heading(screen, "DONE FOR TODAY")
+    fl.log(day, "end", "planned {}, did {}".format(planned, did))
+    if did >= planned:
+        if settings.get("celebrate", "on") != "off":
+            celebrate.run(screen, day, int(fl.number(settings, "width", 78)))
+        screen.line("Planned {}, did {}. Promise kept.".format(planned, did), "green")
+    else:
+        screen.line("Planned {}, did {}. Ended early, and logged honestly.".format(planned, did), "yellow")
+        screen.line("The next day is a new promise. Make it one you will keep.", "grey")
+    backlog = fl.load_backlog()
+    if must and "D{} | {}".format(day, must) in backlog["DONE"]:
+        screen.line("Your MUST is already ticked off: {}".format(matrix.strip_box(must)), "green")
+    elif must and must in backlog["DOING"] and fl.ask_yes(
+            screen, "Did you finish: {} ?".format(matrix.strip_box(must)), False):
+        backlog["DOING"].remove(must)
+        backlog["DONE"].append("D{} | {}".format(day, must))
+        fl.save_backlog(backlog)
+        screen.line("Moved to DONE.", "green")
+    elif must and must in backlog["DOING"]:
+        screen.line("It stays in DOING for next time.", "grey")
+    if routines.any_routines():
+        routines.check(screen, day, allow_add=False)
+    if fl.on(settings, "ask_practice"):
+        practice.end_of_day(screen, day)
+    sort_parking_lot(screen, backlog)
+    if position == fl.CYCLE_DAYS:
+        review_cycle(screen, backlog, day, cycle)
+
+    today.show(screen, day)
+    fl.ask(screen, "That was today. Press Enter for the big picture.")
+    dash.show(screen, day)
+    if fl.on(settings, "ask_reward") and did >= planned:
+        rewards.offer(screen, day)
+    if started is not None:
+        fl.log(day, "timing", "run {}".format(int(time.time() - started)))
+    screen.line("That is the day. Close the laptop.", "bold")
+
+
+def repair_finished_days(screen, days, skip=None):
+    """Close days where every promised pomodoro was done but the day was never ended."""
+    for day in sorted(days):
+        info = days[day]
+        if day != skip and info["planned"] and info["did"] is None \
+                and fl.pomo_count(day) >= info["planned"]:
+            fl.log(day, "end", "planned {}, did {}".format(info["planned"], info["planned"]))
+            screen.line("D{} had all {} pomodoros done but was never closed. Closed it: promise kept.".format(
+                day, info["planned"]), "green")
+
+
+def end_main():
+    """focus end: close the current day without running more pomodoros."""
+    if fl.help_requested(HELP):
+        return
+    fl.fix_streams()
+    settings = fl.load_settings()
+    screen = fl.Screen(settings["display"])
+    try:
+        days = fl.read_log()
+        if not days:
+            screen.line("No day has been started yet. Type  focus  to begin.", "grey")
+            return
+        day = max(days)
+        repair_finished_days(screen, days, skip=day)
+        info = days[day]
+        if not info["planned"] or info["did"] is not None:
+            screen.line("D{} is already finished. There is nothing to end.".format(day), "grey")
+            return
+        planned, did = info["planned"], fl.pomo_count(day)
+        if did < planned:
+            screen.line("D{}: you promised {} and have done {}.".format(day, planned, did), "yellow")
+            if not fl.ask_yes(screen, "End the day here anyway?", False):
+                screen.line("Not ended. Type  focus  to carry on with it.", "grey")
+                return
+        TODAY["day"] = day
+        backlog = fl.load_backlog()
+        must = read_today("MUST") or (backlog["DOING"][0] if backlog["DOING"] else "")
+        close_day(screen, settings, day, planned, min(did, planned), must)
+    except (KeyboardInterrupt, EOFError):
+        screen.cursor(True)
+        screen.color("plain")
+        screen.line("")
+        screen.line("Stopped. Anything already answered is saved.", "yellow")
+
+
 def run(screen, settings):
     started = time.time()
     screen.clear()
     days = fl.read_log()
     backlog = fl.load_backlog()
+    if days:
+        repair_finished_days(screen, days, skip=max(days))
+        days = fl.read_log()
     if days and days[max(days)]["did"] is None:
         today.show(screen, max(days))
     elif days:
@@ -366,7 +468,7 @@ def run(screen, settings):
 
     if resumed:
         planned = days[day]["planned"] or 2
-        done = len(days[day]["focus"])
+        done = fl.pomo_count(day)
         must = read_today("MUST") or (backlog["DOING"][0] if backlog["DOING"] else "")
         workbook = ""
         screen.line("Continuing D{}: {} of {} pomodoros done.".format(day, done, planned))
@@ -412,7 +514,7 @@ def run(screen, settings):
         fl.log(day, "start", "plan {}".format(planned), "energy {}".format(energy), "must: " + must,
                "workbook: " + workbook if workbook else "")
         done = 0
-        if fl.load_routines():
+        if routines.any_routines():
             screen.line("")
             screen.line("Tick any routine you have already done today.", "grey")
             routines.check(screen, day, allow_add=False)
@@ -421,35 +523,7 @@ def run(screen, settings):
         fl.log(day, "timing", "setup {}".format(int(time.time() - started)))
     run_pomodoros(screen, settings, day, planned, done + 1, must, workbook)
 
-    heading(screen, "DONE FOR TODAY")
-    fl.log(day, "end", "planned {}, did {}".format(planned, planned))
-    if settings.get("celebrate", "on") != "off":
-        celebrate.run(screen, day, int(fl.number(settings, "width", 78)))
-    screen.line("Planned {}, did {}. Promise kept.".format(planned, planned), "green")
-    backlog = fl.load_backlog()
-    if must and fl.ask_yes(screen, "Did you finish: {} ?".format(must), False):
-        if must in backlog["DOING"]:
-            backlog["DOING"].remove(must)
-        backlog["DONE"].append("D{} | {}".format(day, must))
-        fl.save_backlog(backlog)
-        screen.line("Moved to DONE.", "green")
-    elif must:
-        screen.line("It stays in DOING for next time.", "grey")
-    if fl.load_routines():
-        routines.check(screen, day, allow_add=False)
-    if fl.on(settings, "ask_practice"):
-        practice.end_of_day(screen, day)
-    sort_parking_lot(screen, backlog)
-    if position == fl.CYCLE_DAYS:
-        review_cycle(screen, backlog, day, cycle)
-
-    today.show(screen, day)
-    fl.ask(screen, "That was today. Press Enter for the big picture.")
-    dash.show(screen, day)
-    if fl.on(settings, "ask_reward"):
-        rewards.offer(screen, day)
-    fl.log(day, "timing", "run {}".format(int(time.time() - started)))
-    screen.line("That is the day. Close the laptop.", "bold")
+    close_day(screen, settings, day, planned, planned, must, started)
 
 
 HELP = """
@@ -483,6 +557,8 @@ On day 1 of a cycle it offers to plan one practice rep per ladder, and
 each day ends by asking whether you did one (focus practice).
 The day ends with a reward from your menu (focus reward).
 Questions you always skip can be switched off: see  focus report .
+focus end closes the day at any point, without more pomodoros. If you
+stop short it logs that honestly ("planned 4, did 2").
 Enter accepts the suggestion shown in brackets.
 Ctrl+C stops; run it again and it offers to continue the same day.
 """

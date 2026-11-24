@@ -264,6 +264,9 @@ def show_full(screen, today=None):
                     ("grey", ".."), ("plain", " none   "), ("yellow", "number"),
                     ("plain", " = streak")])
 
+    for row in routines.weekly_history_rows(today):
+        screen.row(row)
+
     if fl.on(fl.load_settings(), "ask_practice"):
         screen.line("")
         for row in practice.dash_rows(today):
@@ -288,9 +291,11 @@ def show_full(screen, today=None):
                     entry[0] += item["points"] or 0
     if goals:
         screen.line("")
+        wide = min(18, max(len(tag) for tag in goals) + 3)
         for i, tag in enumerate(sorted(goals)):
             got, total = goals[tag]
-            screen.row([label("GOALS" if i == 0 else ""), ("plain", "{:<9}".format("#" + tag)[:9])] +
+            screen.row([label("GOALS" if i == 0 else ""),
+                        ("plain", "{:<{}}".format("#" + tag, wide)[:wide])] +
                        bar(got, total, 20) + [("plain", "  {} of {} points".format(got, total))])
     screen.line("")
     screen.flush()
@@ -401,6 +406,16 @@ def show(screen, today=None):
             cells += [("plain", text), ("yellow", "{}".format(current)), ("plain", "   ")]
             used += len(text) + len(str(current)) + 3
         cells.append(("grey", "(streaks)"))
+        screen.row(cells)
+
+    weekly = fl.load_weekly()
+    if weekly:
+        wticks = fl.read_weekly_ticks().get(cycle, {})
+        cells = [label("WEEKLY")]
+        for name, times in weekly[:4]:
+            hit = wticks.get(name, 0) >= times
+            cells += [("plain", "{} ".format(name[:16])), ("green" if hit else "grey", "[x]" if hit else "[ ]"),
+                      ("plain", "   ")]
         screen.row(cells)
 
     if fl.on(fl.load_settings(), "ask_practice"):

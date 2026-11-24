@@ -17,7 +17,7 @@ except ImportError:
     winsound = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "2026-11-23j"      # change this whenever the scripts change
+VERSION = "2026-11-24a"      # change this whenever the scripts change
 SECTIONS = ["DOING", "THIS CYCLE", "BACKLOG - IMPORTANT", "BACKLOG - SOMEDAY", "DONE"]
 HEADERS = {"DOING": "DOING (max 1)", "THIS CYCLE": "THIS CYCLE"}
 CYCLE_DAYS = 7
@@ -147,6 +147,7 @@ All commands (type them in the Cygwin terminal):
   focus              the guided day: plan, pomodoros, breaks, log, dashboard
   focus today        one page for today: the MUST, what is done, what is left
   focus dash         the dashboard on one screen (focus dash all = everything)
+  focus end          close today: routines, the MUST, parking lot, reward
   focus done         tick off a finished task, no pomodoro needed
   focus extra        record a pomodoro you did away from the script
   focus check        daily routines (shower, meals ...): tick them off
@@ -154,6 +155,7 @@ All commands (type them in the Cygwin terminal):
   focus appt         today's fixed things (work, the vet): see and add
   focus reward       your reward menu: see it, add to it, roll one
   focus report       which questions you answer and which you skip
+  focus reflect      your week in numbers, to talk through with Claude
   focus feedback     jot a note about the system itself for Claude
   focus diagnose     write diagnose.txt: a check-up to bring back to Claude
   focus matrix       the Eisenhower chart: see and re-sort your tasks
@@ -300,7 +302,7 @@ def read_log():
         if not match:
             continue
         day, kind, rest = int(match.group(1)), match.group(2), match.group(3)
-        if kind in ("tick", "appt", "reward", "timing", "rep", "repplan", "rung", "done"):
+        if kind in ("tick", "wtick", "appt", "reward", "timing", "rep", "repplan", "rung", "done"):
             continue
         info = days.setdefault(day, {"planned": None, "did": None, "focus": [],
                                      "away": [], "points": None, "energy": None})
@@ -367,19 +369,49 @@ def day_events(day):
 
 # ----------------------------------------------------------------- routines
 
-def load_routines():
-    """[(name, times a day)] from routines.txt."""
-    routines = []
+def _routine_lines():
+    """(name, times, weekly) for every line of routines.txt."""
+    out = []
     for line in read_lines("routines.txt"):
         line = clean(line)
         if not line or line.startswith("#"):
             continue
+        weekly = False
+        match = re.match(r"^(.*?)\s+weekly$", line, re.I)
+        if match:
+            weekly, line = True, match.group(1)
+        times = 1
         match = re.match(r"^(.*?)\s+x\s*(\d+)$", line, re.I)
         if match and int(match.group(2)) > 0:
-            routines.append((match.group(1), min(9, int(match.group(2)))))
-        else:
-            routines.append((line, 1))
-    return routines
+            line, times = match.group(1), min(9, int(match.group(2)))
+        out.append((line, times, weekly))
+    return out
+
+
+def load_routines():
+    """Daily routines: [(name, times a day)]."""
+    return [(name, times) for name, times, weekly in _routine_lines() if not weekly]
+
+
+def load_weekly():
+    """Weekly routines: [(name, times a cycle)]. Lines ending in the word weekly."""
+    return [(name, times) for name, times, weekly in _routine_lines() if weekly]
+
+
+def read_weekly_ticks():
+    """{cycle: {routine name: boxes ticked}} from the log."""
+    ticks = {}
+    for line in read_lines("log.txt"):
+        match = re.match(r"^D(\d+) \| wtick \| (.+)$", line.strip())
+        if match:
+            cycle = ticks.setdefault(cycle_of(int(match.group(1)))[0], {})
+            cycle[match.group(2)] = cycle.get(match.group(2), 0) + 1
+    return ticks
+
+
+def pomo_count(day):
+    """Pomodoros that count toward the promise on this day (extras do not)."""
+    return len([1 for kind, _ in day_events(day) if kind.startswith("pomo")])
 
 
 def append_line(name, text):

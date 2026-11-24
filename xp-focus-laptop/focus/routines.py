@@ -9,9 +9,13 @@ routines.py - the daily routines checklist
 
 Routines are things that come round every day, like shower or meals.
 They are not tasks: no points, no Eisenhower boxes, no deadlines.
-The list is in routines.txt, one per line. Add x3 for three times a day:
+The list is in routines.txt, one per line. Add x3 for three times a day,
+and the word weekly for something done once a cycle (seven focus days):
     shower
     eat a meal x3
+    laundry weekly
+    change the sheets weekly
+Weekly boxes stay ticked until the next cycle starts.
 Type a routine's number to tick one box. Boxes start empty again on each
 new focus day.
 A streak counts focus days in a row on which the routine was fully done.
@@ -91,34 +95,75 @@ def grid_rows(days, today):
     return out
 
 
+def weekly_rows(day, first="WEEKLY"):
+    """Rows for the day page: this cycle's boxes for weekly routines."""
+    ticks = fl.read_weekly_ticks().get(fl.cycle_of(day)[0], {})
+    out = []
+    for i, (name, times) in enumerate(fl.load_weekly()):
+        out.append([label(first if i == 0 else "")] + boxes(times, ticks.get(name, 0)) +
+                   [("plain", "{:<22}".format(name[:22])), ("grey", "this cycle")])
+    return out
+
+
+def weekly_history_rows(day, cycles=8):
+    """Rows for the full dashboard: each weekly routine over recent cycles."""
+    ticks = fl.read_weekly_ticks()
+    current = fl.cycle_of(day)[0]
+    out = []
+    for i, (name, times) in enumerate(fl.load_weekly()):
+        cells = [label("WEEKLY" if i == 0 else ""), ("plain", "{:<12}".format(name[:11]))]
+        for cycle in range(max(1, current - cycles + 1), current + 1):
+            done = ticks.get(cycle, {}).get(name, 0)
+            cells.append(("on_green", "##") if done >= times else
+                         ("on_yellow", "==") if done else ("grey", ".."))
+            cells.append(("plain", " "))
+        cells.append(("grey", " by cycle"))
+        out.append(cells)
+    return out
+
+
+def any_routines():
+    return bool(fl.load_routines() or fl.load_weekly())
+
+
 def add(screen):
     name = fl.ask(screen, "  Name of the routine (Enter = cancel):")
     if not name:
         return
-    times = fl.ask_int(screen, "  How many times a day? (Enter = 1):", 1, 9, 1)
+    weekly = fl.ask(screen, "  Every day, or once a cycle (a week)?  d / w  (Enter = d):").lower().startswith("w")
+    times = fl.ask_int(screen, "  How many times a {}? (Enter = 1):".format("cycle" if weekly else "day"),
+                       1, 9, 1)
+    line = name if times == 1 else "{} x{}".format(name, times)
     lines = fl.read_lines("routines.txt")
-    lines.append(name if times == 1 else "{} x{}".format(name, times))
+    lines.append(line + " weekly" if weekly else line)
     fl.write_lines("routines.txt", lines)
     screen.line("  Added.", "green")
 
 
 def check(screen, day, allow_add=True):
-    """Show today's boxes and tick them off by number."""
+    """Show today's boxes (and this cycle's weekly ones) and tick them off by number."""
+    cycle = fl.cycle_of(day)[0]
     while True:
-        items = fl.load_routines()
+        daily, weekly = fl.load_routines(), fl.load_weekly()
         every = fl.read_ticks()
         ticks = every.get(day, {})
+        wticks = fl.read_weekly_ticks().get(cycle, {})
         screen.line("")
         screen.line("== ROUTINES - D{} ==".format(day), "yellow")
-        for i, (name, times) in enumerate(items, 1):
+        for i, (name, times) in enumerate(daily, 1):
             current, best = streaks(name, times, every, day)
             screen.row([("plain", "  {:>2}. ".format(i))] + boxes(times, ticks.get(name, 0)) +
                        [("plain", "{:<22}".format(name[:22])), ("yellow", streak_text(current, best))])
-        if not items:
+        if weekly:
+            screen.line("  once a cycle:", "grey")
+        for i, (name, times) in enumerate(weekly, len(daily) + 1):
+            screen.row([("plain", "  {:>2}. ".format(i))] + boxes(times, wticks.get(name, 0)) +
+                       [("plain", "{:<22}".format(name[:22])), ("grey", "this cycle")])
+        if not daily and not weekly:
             screen.line("  No routines yet.", "grey")
-        left = sum(max(0, times - ticks.get(name, 0)) for name, times in items)
-        if items and left == 0:
-            screen.line("  All done for today.", "green")
+        left = sum(max(0, times - ticks.get(name, 0)) for name, times in daily)
+        if daily and left == 0:
+            screen.line("  All of today's are done.", "green")
         prompt = "Tick one off - type its number"
         if allow_add:
             prompt += ", a = add a routine"
@@ -127,8 +172,8 @@ def check(screen, day, allow_add=True):
             return
         if pick.lower() == "a" and allow_add:
             add(screen)
-        elif pick.isdigit() and 1 <= int(pick) <= len(items):
-            name, times = items[int(pick) - 1]
+        elif pick.isdigit() and 1 <= int(pick) <= len(daily):
+            name, times = daily[int(pick) - 1]
             if ticks.get(name, 0) >= times:
                 screen.line("  Already complete for today.", "grey")
             else:
@@ -138,6 +183,12 @@ def check(screen, day, allow_add=True):
                     if current in STREAK_MARKS:
                         screen.line("")
                         screen.line("  *** {}: {} days in a row! ***".format(name, current), "yellow")
+        elif pick.isdigit() and len(daily) < int(pick) <= len(daily) + len(weekly):
+            name, times = weekly[int(pick) - len(daily) - 1]
+            if wticks.get(name, 0) >= times:
+                screen.line("  Already complete for this cycle.", "grey")
+            else:
+                fl.log(day, "wtick", name)
 
 
 def main():

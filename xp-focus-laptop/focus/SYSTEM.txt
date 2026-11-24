@@ -10,6 +10,8 @@ TO START A DAY
   Then follow it. It asks the questions and writes the files.
 
 OTHER COMMANDS
+  focus end       close today without more pomodoros (honest if short)
+  focus reflect   your week in numbers and notes, to talk through
   focus done      tick off a finished task, no pomodoro needed
   focus extra     record a pomodoro you did away from the script
   focus today     ONE PAGE FOR TODAY: the MUST, what is done, what is left
@@ -87,6 +89,11 @@ HELPERS BUILT IN
   Report        focus report counts which optional questions you answer
                 and which you skip, and names the settings.txt line that
                 switches a skipped one off (for example ask_first=off).
+  Weekly        End a line in routines.txt with the word weekly (for
+                example  laundry weekly ) and its box lasts a whole cycle.
+  Points and    Two different questions. Urgent? Important? put a task in
+  the chart     a box: that decides WHEN. The size questions give points:
+                that is HOW BIG, used only to see how much fits a cycle.
   Pick for me   When choosing the MUST is too much, type p. It takes the
                 top item.
 

@@ -87,12 +87,14 @@ def extra_main():
         note = fl.ask(screen, "One line on how it went (Enter to skip):")
         counted = sum(1 for kind, _ in fl.day_events(day) if kind.startswith("pomo"))
         if info["did"] is None and counted < info["planned"]:
-            fl.log(day, "pomo {}".format(counted + 1), "focus {}".format(focus), "intent: " + what,
+            numbers = [int(kind.split()[1]) for kind, _ in fl.day_events(day)
+                       if kind.startswith("pomo") and kind.split()[1].isdigit()]
+            fl.log(day, "pomo {}".format(max(numbers + [0]) + 1), "focus {}".format(focus), "intent: " + what,
                    "note: " + note if note else "", "offscript: yes")
             screen.line("Logged as pomodoro {} of {} for today's promise.".format(
                 counted + 1, info["planned"]), "green")
             if counted + 1 >= info["planned"]:
-                screen.line("That completes the promise. Type  focus  to close the day.", "green")
+                screen.line("That completes the promise. Type  focus end  to close the day.", "green")
         else:
             fl.log(day, "extra", "focus {}".format(focus), "intent: " + what,
                    "note: " + note if note else "")

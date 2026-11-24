@@ -5,6 +5,7 @@ import os
 import shutil
 
 import focuslib as fl
+import reflect
 
 try:
     import ctypes
@@ -62,6 +63,10 @@ def progress():
 def copy_to(target):
     with open(fl.path("progress.json"), "w", encoding="utf-8") as handle:
         json.dump(progress(), handle, indent=1, sort_keys=True)
+    try:
+        reflect.write("all")
+    except Exception:
+        pass
     if not os.path.isdir(target):
         os.makedirs(target)
     copied = 0
