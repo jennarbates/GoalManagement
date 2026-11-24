@@ -400,8 +400,9 @@ def run(screen, settings):
                              1, 8, suggest)
         names = dict((str(i), name) for i, name in enumerate(pomo.STYLES, 1))
         names["s"] = "rotate"
-        screen.line("  Timer:  " + "  ".join("{} {}".format(i, name)
-                                             for i, name in enumerate(pomo.STYLES, 1)) + "  s surprise me", "grey")
+        choices = ["{} {}".format(i, name) for i, name in enumerate(pomo.STYLES, 1)] + ["s surprise me"]
+        for start in range(0, len(choices), 5):
+            screen.line("    " + "".join("{:<14}".format(c) for c in choices[start:start + 5]), "grey")
         choice = fl.ask(screen, "Which timer? (Enter = {}):".format(
             "surprise me" if settings["style"] == "rotate" else settings["style"])).lower()
         if choice in names:

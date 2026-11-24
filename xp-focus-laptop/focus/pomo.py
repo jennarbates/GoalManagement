@@ -223,9 +223,174 @@ def rocket(frac, tick, sand, grain, label, intent, width):
     return _finish(grid, label, intent, width)
 
 
-STYLES = ["hourglass", "ball", "candle", "sun", "snake", "rocket"]
-FRAMES = {"hourglass": hourglass, "candle": candle, "sun": sun, "snake": snake, "rocket": rocket}
-DELAY = {"hourglass": 0.5, "candle": 0.4, "sun": 1.0, "snake": 0.5, "rocket": 0.4}
+# ------------------------------------------------------------ cute timers
+
+def _stamp(grid, y, x, lines, color="plain"):
+    """Draw a small picture; its spaces are see-through."""
+    for dy, line in enumerate(lines):
+        for dx, char in enumerate(line):
+            if char != " " and 0 <= y + dy < len(grid) and 0 <= x + dx < len(grid[0]):
+                grid[y + dy][x + dx] = (color, char)
+
+
+def cat(frac, tick, sand, grain, label, intent, width):
+    """A cat pads across the floor to its fish, leaving paw prints."""
+    height, wide = 9, 60
+    grid = _canvas(height, wide)
+    floor = height - 1
+    done = frac >= 1.0
+    x = wide - 16 if done else int(frac * (wide - 16))
+    _put(grid, floor, 0, "_" * wide)
+    for step in range(2, x, 5):
+        _put(grid, floor, step, ".", grain)
+    if done:
+        _stamp(grid, 1, x + 8, ["<3"], grain)
+    else:
+        _stamp(grid, floor - 1, wide - 6, ["<><"], grain)
+    face = "( ^.^ )" if done else ("( -.- )" if tick % 7 == 0 else "( o.o )")
+    _stamp(grid, floor - 4, x, [" /\\_/\\", face, " > ^ <", "  U U" if tick % 2 or done else " U   U"], "bold")
+    if x:
+        _put(grid, floor - 2, x - 1, "~", "bold")
+    return _finish(grid, label, intent, width)
+
+
+def snail(frac, tick, sand, grain, label, intent, width):
+    """A snail crawls to its leaf. The trail behind it is the time gone."""
+    height, wide = 7, 60
+    grid = _canvas(height, wide)
+    floor = height - 1
+    done = frac >= 1.0
+    x = wide - 17 if done else int(frac * (wide - 17))
+    _put(grid, floor, 0, "." * wide, "grey")
+    _put(grid, floor, 0, "_" * (x + 2), sand)
+    _stamp(grid, floor - 3, wide - 5, ["\\|/", " | ", " | "], "green")
+    _stamp(grid, floor - 2, x, ["   __    oo" if tick % 2 or done else "   __   o o",
+                                "__(  )___/"], "bold")
+    _put(grid, floor - 1, x + 3, "@", grain)
+    if done:
+        _stamp(grid, floor - 4, x + 6, ["nom"], grain)
+    return _finish(grid, label, intent, width)
+
+
+def plant(frac, tick, sand, grain, label, intent, width):
+    """A sprout grows out of its pot and flowers when the time is up."""
+    height, wide, tallest = 16, 31, 9
+    grid = _canvas(height, wide)
+    middle = wide // 2
+    done = frac >= 1.0
+    grown = tallest if done else int(frac * tallest)
+    _stamp(grid, height - 3, middle - 4, ["_________", "\\       /", " \\_____/"])
+    for i in range(grown):
+        y = height - 4 - i
+        _put(grid, y, middle, "|", grain)
+        if i % 2:
+            if (i // 2) % 2:
+                _put(grid, y, middle + 1, "/~", grain)
+            else:
+                _put(grid, y, middle - 2, "~\\", grain)
+    tip = height - 4 - grown
+    if done:
+        _stamp(grid, tip - 2, middle - 3, [" _(_)_", "(_) (_)", "  (_)"], grain)
+        _put(grid, tip - 1, middle, "@", "bold")
+    else:
+        _put(grid, tip, middle, "o" if tick % 2 else ".", grain)
+    return _finish(grid, label, intent, width)
+
+
+def mug(frac, tick, sand, grain, label, intent, width):
+    """A hot drink goes down sip by sip. An empty mug means time is up."""
+    height, wide, full = 12, 22, 6
+    grid = _canvas(height, wide)
+    left = 0 if frac >= 1.0 else int(math.ceil((1.0 - frac) * full))
+    _put(grid, 3, 1, ".------------.")
+    for i in range(full):
+        _put(grid, 4 + i, 1, "|")
+        _put(grid, 4 + i, 14, "|")
+        if i >= full - left:
+            _put(grid, 4 + i, 2, "#" * 12, sand)
+    _put(grid, 10, 1, "'------------'")
+    _put(grid, 5, 15, "--.")
+    _put(grid, 6, 17, "|")
+    _put(grid, 7, 17, "|")
+    _put(grid, 8, 15, "--'")
+    if frac < 1.0:
+        steam = [" )  )", "(  (", " )  )"] if tick % 2 else ["(  (", " )  )", "(  ("]
+        _stamp(grid, 0, 5, steam, "grey")
+    else:
+        _stamp(grid, 6, 4, ["all gone"], "grey")
+    return _finish(grid, label, intent, width)
+
+
+def duck(frac, tick, sand, grain, label, intent, width):
+    """A duck and two ducklings paddle across the pond to the reeds."""
+    height, wide = 9, 60
+    grid = _canvas(height, wide)
+    done = frac >= 1.0
+    x = wide - 17 if done else int(frac * (wide - 17))
+    for y in (6, 7, 8):
+        _put(grid, y, 0, (("~ " if (y + tick) % 2 else " ~") * wide)[:wide], "grey")
+    _put(grid, 6, 0, "=" * x, sand)
+    _stamp(grid, 3, wide - 4, ["\\|/", " | ", " | "], "green")
+    _stamp(grid, 2, x, ["    __", "___( o)", "\\ <_. )", " `---'"], "bold")
+    _put(grid, 3, x + 7, ">", grain)
+    for gap in (5, 10):
+        if x >= gap:
+            _stamp(grid, 5 - (tick + gap) % 2, x - gap, ["(o>"], "bold")
+    if done:
+        _stamp(grid, 0, x + 2, ["quack!"], grain)
+    return _finish(grid, label, intent, width)
+
+
+HEART = ["  ***   ***  ", " ***** ***** ", "*************", "*************", " *********** ",
+         "  *********  ", "   *******   ", "    *****    ", "     ***     ", "      *      "]
+HEART_CELLS = [(y, x) for y in range(len(HEART) - 1, -1, -1)
+               for x in range(len(HEART[0])) if HEART[y][x] == "*"]
+
+
+def heart(frac, tick, sand, grain, label, intent, width):
+    """A heart fills up from the bottom."""
+    grid = _canvas(len(HEART) + 1, 2 * len(HEART[0]))
+    filled = len(HEART_CELLS) if frac >= 1.0 else int(frac * len(HEART_CELLS))
+    for index, (y, x) in enumerate(HEART_CELLS):
+        if index < filled:
+            _put(grid, y, 2 * x, "##", sand)
+        else:
+            _put(grid, y, 2 * x, "..", "grey")
+    return _finish(grid, label, intent, width)
+
+
+def muncher(frac, tick, sand, grain, label, intent, width):
+    """A little muncher eats every dot in the box."""
+    height, wide = 7, 40
+    total = height * wide
+    eaten = total if frac >= 1.0 else int(frac * total)
+    grid = _canvas(height + 2, wide + 2)
+    for y in (0, height + 1):
+        _put(grid, y, 0, "+" + "-" * wide + "+")
+    for y in range(1, height + 1):
+        _put(grid, y, 0, "|")
+        _put(grid, y, wide + 1, "|")
+    for index in range(eaten, total):
+        y, x = divmod(index, wide)
+        if y % 2:
+            x = wide - 1 - x
+        if index == eaten:
+            _put(grid, y + 1, x + 1, "C" if tick % 2 else "O", "bold")
+        else:
+            _put(grid, y + 1, x + 1, ".", grain)
+    if eaten >= total:
+        _stamp(grid, height // 2 + 1, wide // 2 - 1, ["yum!"], grain)
+    return _finish(grid, label, intent, width)
+
+
+STYLES = ["hourglass", "ball", "candle", "sun", "snake", "rocket",
+          "cat", "snail", "plant", "mug", "duck", "heart", "muncher"]
+FRAMES = {"hourglass": hourglass, "candle": candle, "sun": sun, "snake": snake, "rocket": rocket,
+          "cat": cat, "snail": snail, "plant": plant, "mug": mug, "duck": duck, "heart": heart,
+          "muncher": muncher}
+DELAY = {"hourglass": 0.5, "candle": 0.4, "sun": 1.0, "snake": 0.5, "rocket": 0.4,
+         "cat": 0.4, "snail": 0.6, "plant": 0.6, "mug": 0.5, "duck": 0.5, "heart": 0.6,
+         "muncher": 0.3}
 
 
 def run(screen, minutes, label, intent="", kind="work", style="hourglass", width=78,
@@ -276,17 +441,24 @@ pomo.py - the visual timer, without the questions
   focus pomo rocket          the same, with the rocket
   focus pomo candle demo     a 25-second preview of a design
 
-Six ways to watch time pass, none with numbers:
+Thirteen ways to watch time pass, none with numbers:
   hourglass   sand runs from the top to the bottom
   ball        a ball bounces in a box that fills from the floor up
   candle      a candle burns down until it goes out
   sun         the sun crosses the sky; sunset is the end
   snake       a snake winds across a box until it is full
   rocket      a rocket climbs from the ground to the moon
+  cat         a cat pads across the floor to its fish
+  snail       a snail crawls to its leaf, leaving a trail
+  plant       a sprout grows out of its pot and flowers
+  mug         a hot drink goes down until the mug is empty
+  duck        a duck and two ducklings paddle across the pond
+  heart       a heart fills up from the bottom
+  muncher     a little muncher eats every dot in the box
 One soft beep = halfway. Three beeps = time. Ctrl+C = abandon.
 
 Options are in settings.txt:
-  style=hourglass | ball | candle | sun | snake | rocket | rotate
+  style=<any name above> | rotate (a different one each day)
   work=25  short=5  long=15  chime=on | off  width=78
 """
 

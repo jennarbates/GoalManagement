@@ -101,10 +101,14 @@ THE DASHBOARDS
   followed by the one-screen dashboard at the end.
 
 THE TIMER
-  No numbers. Six designs, chosen at the start of each day:
+  No numbers. Thirteen designs, chosen at the start of each day:
     hourglass  sand runs down          candle  burns down and goes out
     ball       box fills from below    sun     crosses the sky and sets
     snake      winds until box is full rocket  climbs to the moon
+    cat        pads over to its fish   snail   crawls to its leaf
+    plant      grows and flowers       mug     a hot drink goes down
+    duck       paddles across a pond   heart   fills from the bottom
+    muncher    eats every dot
   "Surprise me" uses a different one each day.
   Preview one for 25 seconds:   focus pomo rocket demo
   The work colour changes each day (yellow, cyan, magenta).
