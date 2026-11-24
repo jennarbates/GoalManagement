@@ -5,11 +5,19 @@ ONE-TIME SETUP (in the Cygwin terminal)
       echo "alias focus='python C:/focus/focus.py'" >> ~/.bashrc
   Close and reopen the terminal. From then on, from any folder:
 
-TO START A DAY
+THE ONLY COMMAND YOU NEED
       focus
-  Then follow it. It asks the questions and writes the files.
+  It looks at where your day stands and offers the next step.
+    Morning   focus   start the day: fixed things, tasks, the MUST,
+                      your promise
+    Later     focus   each time you sit down: the day page and a menu
+                      (next pomodoro, tick off a task, tick routines,
+                      park a thought, end the day)
+    Evening   focus   close the day: routines, parking lot, reward
+  Everything below is optional. "focus help" shows this short version;
+  "focus help all" lists every command.
 
-OTHER COMMANDS
+OTHER COMMANDS (all optional)
   focus end       close today without more pomodoros (honest if short)
   focus reflect   your week in numbers and notes, to talk through
   focus done      tick off a finished task, no pomodoro needed

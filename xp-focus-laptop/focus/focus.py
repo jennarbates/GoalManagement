@@ -83,7 +83,10 @@ def dispatch():
     if not args:
         day.main()
     elif args[0].lower() in ("help", "--help", "-h", "/?"):
-        sys.stdout.write(HELP.strip("\n") + "\n" + fl.COMMANDS)
+        if "all" in [arg.lower() for arg in args[1:]]:
+            sys.stdout.write(HELP.strip("\n") + "\n" + fl.COMMANDS)
+        else:
+            sys.stdout.write(fl.ESSENTIALS)
     elif args[0].lower() == "inbox" and len(args) > 1:
         fl.fix_streams()
         inbox(args[1])

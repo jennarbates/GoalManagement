@@ -17,7 +17,7 @@ except ImportError:
     winsound = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "2026-11-24a"      # change this whenever the scripts change
+VERSION = "2026-11-24c"      # change this whenever the scripts change
 SECTIONS = ["DOING", "THIS CYCLE", "BACKLOG - IMPORTANT", "BACKLOG - SOMEDAY", "DONE"]
 HEADERS = {"DOING": "DOING (max 1)", "THIS CYCLE": "THIS CYCLE"}
 CYCLE_DAYS = 7
@@ -141,6 +141,26 @@ class Screen(object):
         self.row([(color or "plain", text)])
         sys.stdout.flush()
 
+
+ESSENTIALS = """
+You only need one command:
+
+  focus      It looks at where your day stands and offers the next step.
+
+A day, start to finish:
+  1. focus   Start the day: it asks what is fixed today, helps you sort
+             your tasks, and you pick one MUST and promise some pomodoros.
+  2. focus   Each time you sit down again. It shows the day and a menu:
+             next pomodoro, tick off a task, tick routines, park a thought.
+             Nothing starts by itself: a pomodoro begins only when you
+             pick it.
+  3. focus   When you are done. It closes the day: routines, parking lot,
+             your day at a glance, a reward.
+
+Every 7 focus days it adds planning at the start and a review at the end.
+
+Everything else is optional. To see it all:   focus help all
+"""
 
 COMMANDS = """
 All commands (type them in the Cygwin terminal):

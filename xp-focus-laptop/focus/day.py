@@ -12,6 +12,8 @@ import focuslib as fl
 import matrix
 import points
 import pomo
+import quick
+import reflect
 import practice
 import report
 import rewards
@@ -291,72 +293,79 @@ def read_today(key):
     return ""
 
 
-def run_pomodoros(screen, settings, day, planned, first, must, workbook):
+def run_one_pomodoro(screen, settings, day, planned, must, workbook=""):
+    """One pomodoro, then the offer of a timed break. Nothing starts by itself."""
     style, color = look_for(settings, day)
     chime = settings.get("chime", "on") != "off"
     width = int(fl.number(settings, "width", 78))
-    n = first
-    while n <= planned:
-        heading(screen, "POMODORO {} of {}".format(n, planned))
-        if appts.one_line(day):
-            screen.line("  " + appts.one_line(day)[:76], "cyan")
-        screen.row([("bold", "  TODAY  ")] + dash.today_row(n - 1, planned))
-        intent = fl.ask_required(screen, "What exactly will you do in this one?")
-        first = ""
-        if fl.on(settings, "ask_first"):
-            first = fl.ask(screen, "The first two-minute action? (Enter to skip):")
-        showing = "{}   (first: {})".format(intent, first) if first else intent
-        screen.line("Stray thought mid-way? Type it into park.txt in Notepad++ and carry on.", "grey")
-        fl.ask(screen, "Press Enter to start. One task only until the beep.")
-        pomo.run(screen, fl.number(settings, "work", 25),
-                 "WORK {} of {}".format(n, planned), showing, "work", style, width,
-                 color, chime)
+    done = fl.pomo_count(day)
+    n = done + 1
+    numbers = [int(kind.split()[1]) for kind, _ in fl.day_events(day)
+               if kind.startswith("pomo") and kind.split()[1].isdigit()]
+    number = max(numbers + [0]) + 1
 
+    heading(screen, "POMODORO {} of {}".format(n, planned))
+    if appts.one_line(day):
+        screen.line("  " + appts.one_line(day)[:76], "cyan")
+    screen.row([("bold", "  TODAY  ")] + dash.today_row(done, planned))
+    intent = fl.ask(screen, "What exactly will you do in this one? (Enter = back to the menu):")
+    if not intent:
+        return
+    first = ""
+    if fl.on(settings, "ask_first"):
+        first = fl.ask(screen, "The first two-minute action? (Enter to skip):")
+    showing = "{}   (first: {})".format(intent, first) if first else intent
+    screen.line("Stray thought mid-way? Type it into park.txt in Notepad++ and carry on.", "grey")
+    fl.ask(screen, "Press Enter to start the timer. One task only until the beep.")
+    pomo.run(screen, fl.number(settings, "work", 25),
+             "WORK {} of {}".format(n, planned), showing, "work", style, width, color, chime)
+
+    screen.clear()
+    screen.line("Time. Stop mid-sentence.", "yellow")
+    screen.line("You said: {}".format(intent), "grey")
+    focus = fl.ask_int(screen, "How did it go?  3 focused  2 okay  1 scattered  0 abandoned:", 0, 3)
+    if focus == 0:
+        fl.log(day, "abandoned", "pomo {}".format(number), "intent: " + intent)
+        screen.line("That one does not count. No penalty.", "yellow")
+        return
+    note = next_note = stray = ""
+    if fl.on(settings, "ask_note"):
+        note = fl.ask(screen, "One line on how it went (Enter to skip):")
+    if fl.on(settings, "ask_next"):
+        next_note = fl.ask(screen, "NEXT - what were you about to do? (Enter to skip):")
+    if fl.on(settings, "ask_stray"):
+        stray = fl.ask(screen, "Any stray thought to park for later? (Enter = none):")
+    if stray:
+        fl.park(stray)
+    fl.log(day, "pomo {}".format(number), "focus {}".format(focus), "intent: " + intent,
+           "first: " + first if first else "",
+           "note: " + note if note else "", "next: " + next_note if next_note else "",
+           "parked: yes" if stray else "")
+    if next_note:
+        write_today(day, workbook, planned, must, next_note)
+    screen.row([("bold", "  TODAY  ")] + dash.today_row(n, planned))
+    total = dash.total_pomodoros()
+    if total in dash.MILESTONES:
+        dash.banner(screen, "FIRST POMODORO DONE" if total == 1
+                    else "{} POMODOROS DONE".format(total))
+
+    if n < planned:
+        long_break = n % 4 == 0
+        if not fl.ask_yes(screen, "Take a timed {}break now?".format("long " if long_break else "")):
+            return
+        heading(screen, "LONG BREAK" if long_break else "BREAK")
+        plan = fl.ask(screen, "What will you do away from the screen? (Enter = stand up, water):",
+                      "stand up, water")
+        fl.ask(screen, "Press Enter, then leave the laptop until the beep.")
+        pomo.run(screen, fl.number(settings, "long" if long_break else "short", 5),
+                 "BREAK", plan, "break", style, width)
         screen.clear()
-        screen.line("Time. Stop mid-sentence.", "yellow")
-        screen.line("You said: {}".format(intent), "grey")
-        focus = fl.ask_int(screen, "How did it go?  3 focused  2 okay  1 scattered  0 abandoned:", 0, 3)
-        if focus == 0:
-            fl.log(day, "abandoned", "pomo {}".format(n), "intent: " + intent)
-            screen.line("That one does not count. No penalty - start it again.", "yellow")
-            continue
-        note = next_note = stray = ""
-        if fl.on(settings, "ask_note"):
-            note = fl.ask(screen, "One line on how it went (Enter to skip):")
-        if fl.on(settings, "ask_next"):
-            next_note = fl.ask(screen, "NEXT - what were you about to do? (Enter to skip):")
-        if fl.on(settings, "ask_stray"):
-            stray = fl.ask(screen, "Any stray thought to park for later? (Enter = none):")
-        if stray:
-            fl.park(stray)
-        fl.log(day, "pomo {}".format(n), "focus {}".format(focus), "intent: " + intent,
-               "first: " + first if first else "",
-               "note: " + note if note else "", "next: " + next_note if next_note else "",
-               "parked: yes" if stray else "")
-        if next_note:
-            write_today(day, workbook, planned, must, next_note)
-        screen.row([("bold", "  TODAY  ")] + dash.today_row(n, planned))
-        total = dash.total_pomodoros()
-        if total in dash.MILESTONES:
-            dash.banner(screen, "FIRST POMODORO DONE" if total == 1
-                        else "{} POMODOROS DONE".format(total))
-
-        if n < planned:
-            long_break = n % 4 == 0
-            heading(screen, "LONG BREAK" if long_break else "BREAK")
-            plan = fl.ask(screen, "What will you do away from the screen? (Enter = stand up, water):",
-                          "stand up, water")
-            fl.ask(screen, "Press Enter, then leave the laptop until the beep.")
-            pomo.run(screen, fl.number(settings, "long" if long_break else "short", 5),
-                     "BREAK", plan, "break", style, width)
-            screen.clear()
-            away = fl.ask_yes(screen, "Break over. Did you actually step away from the laptop?")
-            rest = ""
-            if fl.on(settings, "ask_break_note"):
-                rest = fl.ask(screen, "How was the break? (Enter to skip):")
-            fl.log(day, "break {}".format(n), "away {}".format("y" if away else "n"),
-                   "intent: " + plan, "note: " + rest if rest else "")
-        n += 1
+        away = fl.ask_yes(screen, "Break over. Did you actually step away from the laptop?")
+        rest = ""
+        if fl.on(settings, "ask_break_note"):
+            rest = fl.ask(screen, "How was the break? (Enter to skip):")
+        fl.log(day, "break {}".format(number), "away {}".format("y" if away else "n"),
+               "intent: " + plan, "note: " + rest if rest else "")
 
 
 def close_day(screen, settings, day, planned, did, must, started=None):
@@ -411,6 +420,22 @@ def repair_finished_days(screen, days, skip=None):
                 day, info["planned"]), "green")
 
 
+def end_day(screen, settings, day):
+    """End the given open day; asks first if the promise is not met. True if ended."""
+    info = fl.read_log()[day]
+    planned, did = info["planned"], fl.pomo_count(day)
+    if did < planned:
+        screen.line("D{}: you promised {} and have done {}.".format(day, planned, did), "yellow")
+        if not fl.ask_yes(screen, "End the day here anyway?", False):
+            screen.line("Not ended.", "grey")
+            return False
+    TODAY["day"] = day
+    backlog = fl.load_backlog()
+    must = read_today("MUST") or (backlog["DOING"][0] if backlog["DOING"] else "")
+    close_day(screen, settings, day, planned, min(did, planned), must)
+    return True
+
+
 def end_main():
     """focus end: close the current day without running more pomodoros."""
     if fl.help_requested(HELP):
@@ -425,25 +450,80 @@ def end_main():
             return
         day = max(days)
         repair_finished_days(screen, days, skip=day)
-        info = days[day]
-        if not info["planned"] or info["did"] is not None:
+        if not days[day]["planned"] or days[day]["did"] is not None:
             screen.line("D{} is already finished. There is nothing to end.".format(day), "grey")
             return
-        planned, did = info["planned"], fl.pomo_count(day)
-        if did < planned:
-            screen.line("D{}: you promised {} and have done {}.".format(day, planned, did), "yellow")
-            if not fl.ask_yes(screen, "End the day here anyway?", False):
-                screen.line("Not ended. Type  focus  to carry on with it.", "grey")
-                return
-        TODAY["day"] = day
-        backlog = fl.load_backlog()
-        must = read_today("MUST") or (backlog["DOING"][0] if backlog["DOING"] else "")
-        close_day(screen, settings, day, planned, min(did, planned), must)
+        end_day(screen, settings, day)
     except (KeyboardInterrupt, EOFError):
         screen.cursor(True)
         screen.color("plain")
         screen.line("")
         screen.line("Stopped. Anything already answered is saved.", "yellow")
+
+
+def what_now(screen, settings, day):
+    """The menu for a day that is under way. Returns go, end or quit."""
+    while True:
+        info = fl.read_log()[day]
+        planned, did = info["planned"], fl.pomo_count(day)
+        left = planned - did
+        today.show(screen, day)
+        screen.line("== WHAT NOW? ==", "yellow")
+        if left > 0:
+            screen.line("  1  start the next pomodoro ({} of {})".format(did + 1, planned), "bold")
+        else:
+            screen.line("  1  close the day - every promised pomodoro is done", "green")
+        screen.line("  2  I already did a pomodoro away from the laptop")
+        screen.line("  3  tick off a finished task")
+        screen.line("  4  tick routines")
+        screen.line("  5  park a stray thought")
+        screen.line("  6  add something fixed today (an appointment)")
+        if left > 0:
+            screen.line("  7  end the day now")
+        answer = fl.ask(screen, "Your choice (Enter = nothing right now):").lower()
+        if not answer or answer.startswith("q"):
+            return "quit"
+        if answer == "1":
+            return "go" if left > 0 else "end"
+        if answer == "2":
+            quick.extra(screen, day)
+        elif answer == "3":
+            quick.done(screen, day)
+        elif answer == "4":
+            routines.check(screen, day)
+        elif answer == "5":
+            thought = fl.ask(screen, "The thought (Enter = cancel):")
+            if thought:
+                fl.park(thought)
+                screen.line("Parked. It will come up when the day ends.", "green")
+        elif answer == "6":
+            appts.ask(screen, day)
+        elif answer == "7" and left > 0:
+            return "end"
+
+
+def after_the_day(screen, days):
+    """The menu when the latest day is finished. Returns the new day number or None."""
+    last = max(days)
+    while True:
+        screen.line("")
+        screen.line("== D{} IS FINISHED ==".format(last), "yellow")
+        screen.line("  1  start a new day (D{})".format(last + 1), "bold")
+        screen.line("  2  look back at D{}".format(last))
+        screen.line("  3  the big picture, in full")
+        screen.line("  4  reflect on the week")
+        answer = fl.ask(screen, "Your choice (Enter = nothing right now):").lower()
+        if answer in ("1", "y", "yes"):
+            return last + 1
+        if answer == "2":
+            today.show(screen, last)
+        elif answer == "3":
+            dash.show_full(screen, last)
+        elif answer == "4":
+            for line in reflect.build():
+                screen.line(line, "bold" if line and not line.startswith(" ") else None)
+        else:
+            return None
 
 
 def run(screen, settings):
@@ -454,15 +534,17 @@ def run(screen, settings):
     if days:
         repair_finished_days(screen, days, skip=max(days))
         days = fl.read_log()
-    if days and days[max(days)]["did"] is None:
-        today.show(screen, max(days))
+    if days and days[max(days)]["planned"] and days[max(days)]["did"] is None:
+        last = max(days)
+        day, resumed = last, True
     elif days:
         dash.show(screen)
-    day, resumed = pick_day(screen, days)
-    if day is None:
-        today.show(screen, max(days))
-        screen.line("  Nothing new was started. D{} stays as it is.".format(max(days)), "grey")
-        return
+        day, resumed = after_the_day(screen, days), False
+        if day is None:
+            screen.line("Nothing new was started. D{} stays as it is.".format(max(days)), "grey")
+            return
+    else:
+        day, resumed = pick_day(screen, days)
     TODAY["day"] = day
     cycle, position = fl.cycle_of(day)
 
@@ -471,7 +553,6 @@ def run(screen, settings):
         done = fl.pomo_count(day)
         must = read_today("MUST") or (backlog["DOING"][0] if backlog["DOING"] else "")
         workbook = ""
-        screen.line("Continuing D{}: {} of {} pomodoros done.".format(day, done, planned))
     else:
         workbook = ""
         if fl.on(settings, "ask_workbook"):
@@ -521,46 +602,54 @@ def run(screen, settings):
 
     if not resumed:
         fl.log(day, "timing", "setup {}".format(int(time.time() - started)))
-    run_pomodoros(screen, settings, day, planned, done + 1, must, workbook)
-
-    close_day(screen, settings, day, planned, planned, must, started)
+        screen.line("")
+        screen.line("The day is set. Nothing starts until you choose it.", "green")
+    while True:
+        choice = what_now(screen, settings, day)
+        if choice == "quit":
+            screen.line("Nothing more for now. Type  focus  when you are back.", "grey")
+            return
+        if choice == "end":
+            if end_day(screen, settings, day):
+                return
+            continue
+        run_one_pomodoro(screen, settings, day, planned, must, workbook)
 
 
 HELP = """
-day.py - the guided focus day
+focus - the one command for the whole day
 
-  python day.py
+  focus
 
-It asks the questions and writes the files for you, in this order:
-  1. Shows the dashboard and counts the focus day (D1, D2, ...).
-     It has no clock: a new day starts only when you answer y to
-     "Is this a new day?". An unfinished day is offered to continue.
-  2. Day 1 of a 7-day cycle: cycle planning. Other days: anything new
-     for the backlog?
-     Then the Eisenhower chart: every open task in its box. Type a
-     number to re-sort one, or Enter if the chart is right.
-     Before that, on every day: anything fixed today, with its time
-     (a work shift, the vet). Those show at the top of the day page.
-  3. Today's MUST (a number, p = pick for me, or type a new task).
-  4. Energy 1-3, then how many pomodoros you promise.
-     Then the routines checklist (shower, meals ...): tick what is done.
-     It comes back at the end of the day.
-  5. Each pomodoro: what you will do, the first two-minute action,
-     the timer, then how it went (3 focused, 2 okay, 1 scattered,
-     0 abandoned = does not count), a NEXT note, a stray thought to park.
-  6. Each break: what you will do away from the screen, the timer,
-     then whether you really stepped away.
-  7. Stops at the promised number, sorts the parking lot, shows the
-     dashboard. Day 7 of a cycle adds a short review.
+It looks at where your day stands and offers the next step.
 
-On day 1 of a cycle it offers to plan one practice rep per ladder, and
-each day ends by asking whether you did one (focus practice).
-The day ends with a reward from your menu (focus reward).
+  No day yet, or the last one is finished
+      It offers to start a new day and walks you through planning:
+      anything fixed today, new tasks (sorted into the Eisenhower chart
+      and sized in points), the chart, today's MUST, your energy, the
+      number of pomodoros you promise, and the timer.
+      Day 1 of a 7-day cycle adds cycle planning first.
+
+  A day is under way
+      It shows the day page and a short menu:
+        1 start the next pomodoro        4 tick routines
+        2 I already did one elsewhere    5 park a stray thought
+        3 tick off a finished task       6 add something fixed today
+        7 end the day now
+      Nothing starts by itself: a pomodoro only begins when you type 1,
+      and Enter leaves the day as it is. After each pomodoro it asks
+      whether you want a timed break, then comes back to this menu.
+      When every promised pomodoro is done, 1 closes the day instead.
+
+  Closing the day
+      The MUST, routines, a practice rep, the parking lot, the day page,
+      the dashboard and a reward. Day 7 of a cycle adds a short review.
+      Ending early is allowed and is logged honestly ("planned 4, did 2").
+
+Each pomodoro asks what you will do and the first small action, runs the
+timer, then asks how it went and what comes next.
+Ctrl+C stops at any point; whatever you answered is already saved.
 Questions you always skip can be switched off: see  focus report .
-focus end closes the day at any point, without more pomodoros. If you
-stop short it logs that honestly ("planned 4, did 2").
-Enter accepts the suggestion shown in brackets.
-Ctrl+C stops; run it again and it offers to continue the same day.
 """
 
 def main():
