@@ -27,7 +27,7 @@ def look_for(settings, day):
     """Timer design and work colour for this day (they rotate for novelty)."""
     style = settings["style"]
     if style == "rotate":
-        style = ("hourglass", "ball")[day % 2]
+        style = pomo.STYLES[day % len(pomo.STYLES)]
     color = "yellow"
     if settings.get("colours", "rotate") != "fixed":
         color = WORK_COLORS[day % len(WORK_COLORS)]
@@ -398,9 +398,12 @@ def run(screen, settings):
         screen.line("Promise a number you will actually do. Doing more breaks it too.", "grey")
         planned = fl.ask_int(screen, "How many pomodoros today? (Enter = {}):".format(suggest),
                              1, 8, suggest)
-        names = {"1": "hourglass", "2": "ball", "3": "rotate"}
-        choice = fl.ask(screen, "Timer: 1 hourglass, 2 ball, 3 surprise me (Enter = {}):".format(
-            "surprise me" if settings["style"] == "rotate" else settings["style"]))
+        names = dict((str(i), name) for i, name in enumerate(pomo.STYLES, 1))
+        names["s"] = "rotate"
+        screen.line("  Timer:  " + "  ".join("{} {}".format(i, name)
+                                             for i, name in enumerate(pomo.STYLES, 1)) + "  s surprise me", "grey")
+        choice = fl.ask(screen, "Which timer? (Enter = {}):".format(
+            "surprise me" if settings["style"] == "rotate" else settings["style"])).lower()
         if choice in names:
             settings["style"] = names[choice]
             fl.save_setting("style", settings["style"])

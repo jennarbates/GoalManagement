@@ -86,7 +86,7 @@ def show(screen, day=None):
         if kind.startswith("pomo"):
             next_note = fields.get("next", next_note)
     listed = [event for event in events
-              if event[0].startswith(("pomo", "break")) or event[0] == "abandoned"]
+              if event[0].startswith(("pomo", "break")) or event[0] in ("abandoned", "extra")]
     if len(listed) > KEEP:
         screen.line("    ... {} earlier".format(len(listed) - KEEP), "grey")
     for kind, fields in listed[-KEEP:]:
@@ -102,6 +102,12 @@ def show(screen, day=None):
             screen.row([("plain", "       "), ("on_cyan" if away else "grey", "~~"),
                         ("grey", "  break: {:<39}".format(fields.get("intent", "")[:39])),
                         ("grey", "stepped away" if away else "stayed at the screen")])
+            shown += 1
+        elif kind == "extra":
+            color, word = FOCUS.get(fields.get("focus"), ("grey", ""))
+            screen.row([("plain", "    +  "), (color, "##"),
+                        ("plain", "  {:<46}".format(fields.get("intent", "")[:46])),
+                        ("grey", word + ", extra")])
             shown += 1
         elif kind == "abandoned":
             screen.row([("grey", "    x      abandoned: {}".format(fields.get("intent", ""))[:76])])

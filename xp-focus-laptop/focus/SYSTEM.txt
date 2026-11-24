@@ -10,6 +10,8 @@ TO START A DAY
   Then follow it. It asks the questions and writes the files.
 
 OTHER COMMANDS
+  focus done      tick off a finished task, no pomodoro needed
+  focus extra     record a pomodoro you did away from the script
   focus today     ONE PAGE FOR TODAY: the MUST, what is done, what is left
   focus dash      dashboard only        focus summary   recap of a cycle
   focus pomo      timer only            focus points    size one task
@@ -99,14 +101,17 @@ THE DASHBOARDS
   followed by the one-screen dashboard at the end.
 
 THE TIMER
-  No numbers. Hourglass: sand runs from top to bottom.
-  Ball: a ball bounces in a box that fills from the floor up.
-  "Surprise me" swaps between the two each day.
+  No numbers. Six designs, chosen at the start of each day:
+    hourglass  sand runs down          candle  burns down and goes out
+    ball       box fills from below    sun     crosses the sky and sets
+    snake      winds until box is full rocket  climbs to the moon
+  "Surprise me" uses a different one each day.
+  Preview one for 25 seconds:   focus pomo rocket demo
   The work colour changes each day (yellow, cyan, magenta).
   Green is always a break.
   One soft beep = halfway: are you still on the task?
   Three beeps = time.
-  Ctrl+C stops it; that pomodoro does not count. Run day.py again
+  Ctrl+C stops it; that pomodoro does not count. Run focus again
   and it offers to continue the same day.
 
 ADDING A TASK (day.py asks; this is what the questions mean)

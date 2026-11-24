@@ -17,7 +17,7 @@ except ImportError:
     winsound = None
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-VERSION = "2026-11-23g"      # change this whenever the scripts change
+VERSION = "2026-11-23i"      # change this whenever the scripts change
 SECTIONS = ["DOING", "THIS CYCLE", "BACKLOG - IMPORTANT", "BACKLOG - SOMEDAY", "DONE"]
 HEADERS = {"DOING": "DOING (max 1)", "THIS CYCLE": "THIS CYCLE"}
 CYCLE_DAYS = 7
@@ -147,6 +147,8 @@ All commands (type them in the Cygwin terminal):
   focus              the guided day: plan, pomodoros, breaks, log, dashboard
   focus today        one page for today: the MUST, what is done, what is left
   focus dash         the dashboard on one screen (focus dash all = everything)
+  focus done         tick off a finished task, no pomodoro needed
+  focus extra        record a pomodoro you did away from the script
   focus check        daily routines (shower, meals ...): tick them off
   focus practice     uncertainty / failure / conflict ladders: plan, log reps
   focus appt         today's fixed things (work, the vet): see and add
@@ -156,7 +158,7 @@ All commands (type them in the Cygwin terminal):
   focus diagnose     write diagnose.txt: a check-up to bring back to Claude
   focus matrix       the Eisenhower chart: see and re-sort your tasks
   focus summary      one-screen recap of a cycle (focus summary 2 = cycle 2)
-  focus pomo         the timer only
+  focus pomo         the timer only (focus pomo rocket demo = a quick preview)
   focus points       story points for one task
   focus undo         take back the last log line or the last finished task
   focus backup       copy C:\\focus to the USB stick
@@ -298,7 +300,7 @@ def read_log():
         if not match:
             continue
         day, kind, rest = int(match.group(1)), match.group(2), match.group(3)
-        if kind in ("tick", "appt", "reward", "timing", "rep", "repplan", "rung"):
+        if kind in ("tick", "appt", "reward", "timing", "rep", "repplan", "rung", "done"):
             continue
         info = days.setdefault(day, {"planned": None, "did": None, "focus": [],
                                      "away": [], "points": None, "energy": None})
@@ -309,7 +311,7 @@ def read_log():
             found = re.search(r"\| energy (\d)", rest)
             if found:
                 info["energy"] = int(found.group(1))
-        elif kind == "pomo":
+        elif kind in ("pomo", "extra"):
             found = re.search(r"focus (\d)", rest)
             if found:
                 info["focus"].append(int(found.group(1)))

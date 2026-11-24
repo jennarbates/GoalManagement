@@ -1,4 +1,5 @@
-# Timer look: hourglass, ball, or rotate (swaps each day)
+# Timer look: hourglass, ball, candle, sun, snake, rocket,
+# or rotate (a different one each day)
 style=hourglass
 # Work colour: rotate (changes each day) or fixed (always yellow)
 colours=rotate
